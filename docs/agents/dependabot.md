@@ -23,7 +23,7 @@ install step, and move by hand, together.
 `.github/workflows/ci.yml` runs four jobs, all required on `main`: `windows` (installs the two
 modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and in PowerShell 7),
 `linux` (`uv sync --frozen`, `ruff check`, `ruff format --check`, shellcheck, `bash -n` and
-`python -m unittest discover -s linux/tests` on Python 3.9 from `.python-version`), `changelog`
+`python -m unittest discover -s linux/tests` on Python 3.15 from `.python-version`), `changelog`
 (`node scripts/check-changelog.mjs`) and `agents` (the repository scripts on the Node in `.nvmrc`).
 `release.yml` runs on a push to `main` and stamps, tags and releases each merge.
 
@@ -34,9 +34,9 @@ modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and 
 
 ## Resolution
 
-- **Toolchain.** Node from `.nvmrc` (22), Python from `.python-version` (3.9: the oldest uv still
-  installs; ruff's `target-version = "py38"` covers the 3.8 floor). If `uv python find 3.9` fails,
-  run `uv python install 3.9`.
+- **Toolchain.** Node from `.nvmrc` (22), Python from `.python-version` (3.15, the newest; ruff's
+  `target-version = "py38"` covers `restore_linux.py`'s 3.8 floor). If `uv python find 3.15`
+  fails, run `uv python install 3.15`.
 - **uv** (`pyproject.toml`, `uv.lock`), from the repository root: `uv lock --check`, then
   `uv sync --frozen`.
 
@@ -46,6 +46,13 @@ modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and 
   `target-version = "py38"`, the ignores with their reasons).
 - `linux/restore_linux.py`, `linux/tests/` and `linux/restore-linux.sh`.
 - The `with:` inputs in `ci.yml` and `release.yml`.
+
+## Grounding facts
+
+- **Dependabot reads `.python-version` for the `uv` ecosystem and supports only recent Pythons**
+  (3.10 to 3.15 on 2026-11-24). A pin below its range fails every `uv` update job before it reads a
+  dependency, with `tool_version_not_supported`, and opens no PR: Hopover's first run did, on
+  3.9. Check the `Dependabot Updates` runs when `uv` PRs stop arriving.
 
 ## Playbook
 

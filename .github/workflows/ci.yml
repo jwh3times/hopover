@@ -42,8 +42,7 @@ jobs:
 
   # The Linux restore: restore_linux.py (standard library only, on the distro's python3 down to
   # 3.8) and its bash bootstrap. ruff and shellcheck are pinned in uv.lock; the unit tests run on
-  # .python-version's 3.9, the oldest Python uv installs, and ruff's py38 target rejects newer
-  # syntax.
+  # .python-version's 3.15, the newest Python, and ruff's py38 target rejects syntax 3.8 lacks.
   linux:
     runs-on: ubuntu-latest
     steps:
