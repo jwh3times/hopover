@@ -311,12 +311,12 @@ $StepList = @(
         $zip = Join-Path $Extras $i.File
         if ($i.Name -eq 'dev-uncommitted') {
             $into = Join-Path $DevRoot '_restored-patches'
-            New-Item -ItemType Directory -Path $into -Force -ErrorAction SilentlyContinue | Out-Null
+            if (-not $DryRun) { New-Item -ItemType Directory -Path $into -Force -ErrorAction SilentlyContinue | Out-Null }
             if (Expand-Extra $zip $into) { $n++ }
             $Manual.Add("Uncommitted changes from the old PC are in $into; apply with: git -C <repo> apply <file>.patch")
             continue
         }
-        New-Item -ItemType Directory -Path $DevRoot -Force -ErrorAction SilentlyContinue | Out-Null
+        if (-not $DryRun) { New-Item -ItemType Directory -Path $DevRoot -Force -ErrorAction SilentlyContinue | Out-Null }
         if (Expand-Extra $zip $DevRoot) { $n++ }
     }
     "restored $n archive(s)" } }
