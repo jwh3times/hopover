@@ -2,3 +2,4 @@
 # anywhere else via -DataDir / HOPOVER_DATA). Never commit it here.
 /data/
 __pycache__/
+.venv/
