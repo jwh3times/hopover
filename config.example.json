@@ -1,0 +1,50 @@
+{
+  "_comment": "Copy to data\\config.json and edit. Every key is optional except migrationRoot (needed by Backup-Extras.ps1, Save-Drivers.ps1 and Test-WipeReady.ps1). Paths can use %ENVVARS% and ~.",
+
+  "devRoot": "C:\\dev",
+  "_devRoot": "Folder holding your git checkouts. Exported, checked for unpushed work, and re-cloned on the new PC.",
+
+  "repoDepth": 3,
+  "useOnlyRepos": [],
+  "_useOnlyRepos": "Repos (relative to devRoot) you only use, never push. Their local changes aren't reported or archived, e.g. \"tools\\\\some-upstream-project\".",
+
+  "migrationRoot": "E:\\Hopover",
+  "_migrationRoot": "A folder on a drive that won't be wiped (an external drive is best). Backup-Extras.ps1 writes extras\\ here and Save-Drivers.ps1 writes drivers\\.",
+
+  "keepDrives": ["E"],
+  "_keepDrives": "Drive letters that survive the reinstall. Test-WipeReady.ps1 checks they're connected and hold your recovery files.",
+
+  "excludedTypeRoots": ["%USERPROFILE%\\Downloads"],
+  "_excludedTypeRoots": "Folders on drives being wiped to search for files that cloud backups usually skip (.exe, .msi, .dll, .iso...). Leave out game libraries; they redownload.",
+  "maxFileMB": 1024,
+
+  "portableRoots": ["%USERPROFILE%\\Documents", "%USERPROFILE%\\Desktop", "%USERPROFILE%\\Downloads", "%USERPROFILE%\\Tools"],
+  "_portableRoots": "Where Catalog-InstalledApps.ps1 looks for portable apps (.exe files outside Program Files).",
+
+  "appData": {
+    "include": [],
+    "exclude": [],
+    "custom": [
+      { "name": "app-example", "app": "Example App", "paths": ["%APPDATA%\\ExampleApp\\Profiles"], "admin": false }
+    ]
+  },
+  "_appData": "Backup-Extras.ps1 archives the app data of every app in catalog\\app-data.json that it finds. include adds optional entries (wildcards, e.g. \"app-thunderbird-*\"), exclude drops entries, custom adds your own. Paths may use * and ?: (any drive letter).",
+
+  "backup": { "provider": "auto", "maxRemainingMB": 1024 },
+  "_backup": "Cloud backup check in Test-WipeReady.ps1. provider: auto (Backblaze if installed), backblaze, or none.",
+
+  "recoveryFiles": ["*recovery*", "*backup*code*", "*2fa*"],
+  "_recoveryFiles": "File name patterns Test-WipeReady.ps1 expects to find in the root of a keep drive (2FA recovery codes and the like).",
+
+  "confirm": ["Password manager: you can sign in on another device and its recovery kit is somewhere other than this PC."],
+  "_confirm": "Extra lines for Test-WipeReady.ps1's \"confirm yourself\" list.",
+
+  "linux": {
+    "devRoot": "~/dev",
+    "prefer": ["vendor", "distro", "portable", "flatpak"],
+    "aur": "auto",
+    "flatpak": true,
+    "nodeMajor": 24
+  },
+  "_linux": "linux/restore-linux.sh. prefer: order of install sources (vendor = the vendor's own repo, package or installer; distro = apt/dnf/pacman; portable = AppImage or tarball; flatpak = Flathub). aur: auto (use yay/paru if installed), never. nodeMajor: Node.js major version for the NodeSource repo."
+}

@@ -1,0 +1,4 @@
+# Each person's exports and config live in data\ (its own private repo, or
+# anywhere else via -DataDir / HOPOVER_DATA). Never commit it here.
+/data/
+__pycache__/

@@ -1,0 +1,140 @@
+{
+  "_comment": "Vendor package repositories and installer scripts used by catalog/linux-packages.json. Templates: {base} ubuntu|debian, {codename} and {version} of that base (Linux Mint, Pop!_OS and friends map to their Ubuntu or Debian base), {fedora} Fedora release, {arch} dpkg arch (amd64, arm64), {rpmarch} (x86_64, aarch64), {goarch} (amd64, arm64), {node} Node.js major from config. An apt suite of {codename} that the vendor doesn't publish yet falls back to the newest one it does. apt keys may be ASCII-armored (dearmored on install) or binary, and a list when a vendor signs with more than one key (Microsoft's newer distro repos use its 2025 key).",
+
+  "repos": {
+    "microsoft-vscode": {
+      "name": "Visual Studio Code (Microsoft)",
+      "apt": { "key": ["https://packages.microsoft.com/keys/microsoft.asc", "https://packages.microsoft.com/keys/microsoft-2025.asc"], "keyring": "/etc/apt/keyrings/packages.microsoft.gpg", "file": "vscode.list",
+               "url": "https://packages.microsoft.com/repos/code", "suite": "stable", "components": "main", "arches": "amd64,arm64,armhf" },
+      "dnf": { "file": "vscode.repo", "baseurl": "https://packages.microsoft.com/yumrepos/vscode", "gpgkey": "https://packages.microsoft.com/keys/microsoft.asc" }
+    },
+    "microsoft-edge": {
+      "name": "Microsoft Edge",
+      "apt": { "key": ["https://packages.microsoft.com/keys/microsoft.asc", "https://packages.microsoft.com/keys/microsoft-2025.asc"], "keyring": "/etc/apt/keyrings/packages.microsoft.gpg", "file": "microsoft-edge.list",
+               "url": "https://packages.microsoft.com/repos/edge", "suite": "stable", "components": "main", "arches": "amd64" },
+      "dnf": { "file": "microsoft-edge.repo", "baseurl": "https://packages.microsoft.com/yumrepos/edge", "gpgkey": "https://packages.microsoft.com/keys/microsoft.asc" }
+    },
+    "microsoft-azure-cli": {
+      "name": "Azure CLI (Microsoft)",
+      "apt": { "key": ["https://packages.microsoft.com/keys/microsoft.asc", "https://packages.microsoft.com/keys/microsoft-2025.asc"], "keyring": "/etc/apt/keyrings/packages.microsoft.gpg", "file": "azure-cli.list",
+               "url": "https://packages.microsoft.com/repos/azure-cli", "suite": "{codename}", "components": "main", "arches": "amd64,arm64" },
+      "dnf": { "file": "azure-cli.repo", "baseurl": "https://packages.microsoft.com/yumrepos/azure-cli", "gpgkey": "https://packages.microsoft.com/keys/microsoft.asc" }
+    },
+    "microsoft-prod": {
+      "name": "Microsoft packages (.NET, PowerShell, OpenJDK)",
+      "apt": { "key": ["https://packages.microsoft.com/keys/microsoft.asc", "https://packages.microsoft.com/keys/microsoft-2025.asc"], "keyring": "/etc/apt/keyrings/packages.microsoft.gpg", "file": "microsoft-prod.list",
+               "url": "https://packages.microsoft.com/{base}/{version}/prod", "suite": "{codename}", "components": "main", "arches": "amd64,arm64" }
+    },
+    "github-cli": {
+      "name": "GitHub CLI",
+      "apt": { "key": "https://cli.github.com/packages/githubcli-archive-keyring.gpg", "keyring": "/etc/apt/keyrings/githubcli-archive-keyring.gpg", "file": "github-cli.list",
+               "url": "https://cli.github.com/packages", "suite": "stable", "components": "main" },
+      "dnf": { "repofile": "https://cli.github.com/packages/rpm/gh-cli.repo" }
+    },
+    "docker": {
+      "name": "Docker Engine",
+      "apt": { "key": "https://download.docker.com/linux/{base}/gpg", "keyring": "/etc/apt/keyrings/docker.gpg", "file": "docker.list",
+               "url": "https://download.docker.com/linux/{base}", "suite": "{codename}", "components": "stable" },
+      "dnf": { "repofile": "https://download.docker.com/linux/fedora/docker-ce.repo" }
+    },
+    "1password": {
+      "name": "1Password",
+      "apt": { "key": "https://downloads.1password.com/linux/keys/1password.asc", "keyring": "/usr/share/keyrings/1password-archive-keyring.gpg", "file": "1password.list",
+               "url": "https://downloads.1password.com/linux/debian/{arch}", "suite": "stable", "components": "main" },
+      "dnf": { "file": "1password.repo", "baseurl": "https://downloads.1password.com/linux/rpm/stable/$basearch", "gpgkey": "https://downloads.1password.com/linux/keys/1password.asc" }
+    },
+    "nodesource": {
+      "name": "Node.js (NodeSource, linked from nodejs.org)",
+      "apt": { "key": "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key", "keyring": "/etc/apt/keyrings/nodesource.gpg", "file": "nodesource.list",
+               "url": "https://deb.nodesource.com/node_{node}.x", "suite": "nodistro", "components": "main" },
+      "dnf": { "file": "nodesource.repo", "baseurl": "https://rpm.nodesource.com/pub_{node}.x/nodistro/nodejs/$basearch", "gpgkey": "https://rpm.nodesource.com/gpgkey/ns-operations-public.key" }
+    },
+    "google-chrome": {
+      "name": "Google Chrome",
+      "apt": { "key": "https://dl.google.com/linux/linux_signing_key.pub", "keyring": "/etc/apt/keyrings/google-chrome.gpg", "file": "google-chrome.list",
+               "url": "https://dl.google.com/linux/chrome/deb/", "suite": "stable", "components": "main", "arches": "amd64" },
+      "dnf": { "file": "google-chrome.repo", "baseurl": "https://dl.google.com/linux/chrome/rpm/stable/x86_64", "gpgkey": "https://dl.google.com/linux/linux_signing_key.pub" }
+    },
+    "mozilla": {
+      "name": "Mozilla (Firefox)",
+      "apt": { "key": "https://packages.mozilla.org/apt/repo-signing-key.gpg", "keyring": "/etc/apt/keyrings/packages.mozilla.org.asc", "file": "mozilla.list", "keepArmored": true,
+               "url": "https://packages.mozilla.org/apt", "suite": "mozilla", "components": "main",
+               "pin": { "origin": "packages.mozilla.org", "priority": 1000 } }
+    },
+    "stripe-cli": {
+      "name": "Stripe CLI",
+      "apt": { "key": "https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public", "keyring": "/usr/share/keyrings/stripe.gpg", "file": "stripe.list",
+               "url": "https://packages.stripe.dev/stripe-cli-debian-local", "suite": "stable", "components": "main" },
+      "dnf": { "file": "stripe.repo", "baseurl": "https://packages.stripe.dev/stripe-cli-rpm-local/", "gpgcheck": false }
+    },
+    "hashicorp": {
+      "name": "HashiCorp",
+      "apt": { "key": "https://apt.releases.hashicorp.com/gpg", "keyring": "/usr/share/keyrings/hashicorp-archive-keyring.gpg", "file": "hashicorp.list",
+               "url": "https://apt.releases.hashicorp.com", "suite": "{codename}", "components": "main" },
+      "dnf": { "repofile": "https://rpm.releases.hashicorp.com/fedora/hashicorp.repo" }
+    },
+    "brave": {
+      "name": "Brave",
+      "apt": { "key": "https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg", "keyring": "/usr/share/keyrings/brave-browser-archive-keyring.gpg", "file": "brave-browser-release.list",
+               "url": "https://brave-browser-apt-release.s3.brave.com/", "suite": "stable", "components": "main", "arches": "amd64,arm64" },
+      "dnf": { "repofile": "https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo" }
+    },
+    "signal": {
+      "name": "Signal",
+      "apt": { "key": "https://updates.signal.org/desktop/apt/keys.asc", "keyring": "/usr/share/keyrings/signal-desktop-keyring.gpg", "file": "signal-xenial.list",
+               "url": "https://updates.signal.org/desktop/apt", "suite": "xenial", "components": "main", "arches": "amd64" }
+    },
+    "tailscale": {
+      "name": "Tailscale",
+      "apt": { "key": "https://pkgs.tailscale.com/stable/{base}/{codename}.noarmor.gpg", "keyring": "/usr/share/keyrings/tailscale-archive-keyring.gpg", "file": "tailscale.list",
+               "url": "https://pkgs.tailscale.com/stable/{base}", "suite": "{codename}", "components": "main" },
+      "dnf": { "repofile": "https://pkgs.tailscale.com/stable/fedora/tailscale.repo" }
+    },
+    "spotify": {
+      "name": "Spotify",
+      "apt": { "key": "https://download.spotify.com/debian/pubkey_C85668DF69375001.gpg", "keyring": "/etc/apt/keyrings/spotify.gpg", "file": "spotify.list",
+               "url": "https://repository.spotify.com", "suite": "stable", "components": "non-free", "arches": "amd64" }
+    }
+  },
+
+  "scripts": {
+    "uv":          { "name": "uv (Astral installer)", "check": "uv", "run": "curl -LsSf https://astral.sh/uv/install.sh | sh", "path": ["~/.local/bin"] },
+    "deno":        { "name": "Deno installer", "check": "deno", "needs": ["unzip"], "run": "curl -fsSL https://deno.land/install.sh | sh -s -- -y", "path": ["~/.deno/bin"] },
+    "rustup":      { "name": "rustup", "check": "cargo", "run": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y", "path": ["~/.cargo/bin"] },
+    "bun":         { "name": "Bun installer", "check": "bun", "needs": ["unzip"], "run": "curl -fsSL https://bun.sh/install | bash", "path": ["~/.bun/bin"] },
+    "go":          { "name": "Go (official tarball from go.dev)", "check": "go", "root": true,
+                     "run": "set -e; v=$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -n1); curl -fsSL \"https://go.dev/dl/${v}.linux-{goarch}.tar.gz\" -o /tmp/go.tgz; rm -rf /usr/local/go; tar -C /usr/local -xzf /tmp/go.tgz; rm -f /tmp/go.tgz",
+                     "path": ["/usr/local/go/bin", "~/go/bin"], "profile": true },
+    "dotnet-install": { "name": "dotnet-install.sh (Microsoft)", "check": "dotnet",
+                     "run": "curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && bash /tmp/dotnet-install.sh --channel {1}.0 && rm -f /tmp/dotnet-install.sh",
+                     "path": ["~/.dotnet", "~/.dotnet/tools"], "profile": true },
+    "dotnet-runtime-install": { "name": "dotnet-install.sh (Microsoft), runtime only", "check": "test -d ~/.dotnet/shared/Microsoft.NETCore.App && ls ~/.dotnet/shared/Microsoft.NETCore.App | grep -q '^{1}\\.'",
+                     "run": "curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && bash /tmp/dotnet-install.sh --runtime dotnet --channel {1}.0 && rm -f /tmp/dotnet-install.sh",
+                     "path": ["~/.dotnet"], "profile": true },
+    "aspnetcore-runtime-install": { "name": "dotnet-install.sh (Microsoft), ASP.NET Core runtime", "check": "test -d ~/.dotnet/shared/Microsoft.AspNetCore.App && ls ~/.dotnet/shared/Microsoft.AspNetCore.App | grep -q '^{1}\\.'",
+                     "run": "curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && bash /tmp/dotnet-install.sh --runtime aspnetcore --channel {1}.0 && rm -f /tmp/dotnet-install.sh",
+                     "path": ["~/.dotnet"], "profile": true },
+    "claude-code": { "name": "Claude Code native installer", "check": "claude", "run": "curl -fsSL https://claude.ai/install.sh | bash", "path": ["~/.local/bin"] },
+    "aws-cli":     { "name": "AWS CLI v2 installer", "check": "aws", "root": true, "needs": ["unzip"],
+                     "run": "set -e; cd /tmp; curl -fsSL \"https://awscli.amazonaws.com/awscli-exe-linux-{rpmarch}.zip\" -o awscliv2.zip; rm -rf aws; unzip -q awscliv2.zip; ./aws/install --update; rm -rf aws awscliv2.zip" },
+    "jetbrains-toolbox": { "name": "JetBrains Toolbox (tarball)", "check": "jetbrains-toolbox",
+                     "run": "set -e; u=$(curl -fsSL 'https://data.services.jetbrains.com/products/releases?code=TBA&latest=true&type=release' | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"TBA\"][0][\"downloads\"][\"linux\"][\"link\"])'); mkdir -p ~/.local/share/JetBrains/Toolbox/bin ~/.local/bin; curl -fsSL \"$u\" | tar -xz --strip-components=1 -C ~/.local/share/JetBrains/Toolbox; ln -sf ~/.local/share/JetBrains/Toolbox/bin/jetbrains-toolbox ~/.local/bin/jetbrains-toolbox",
+                     "path": ["~/.local/bin"] }
+  },
+
+  "prereqs": {
+    "i386":              { "apt": "dpkg --add-architecture i386", "check": { "apt": "dpkg --print-foreign-architectures | grep -qx i386" } },
+    "rpmfusion-free":    { "dnf": "dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{fedora}.noarch.rpm", "check": { "dnf": "rpm -q rpmfusion-free-release" } },
+    "rpmfusion-nonfree": { "dnf": "dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{fedora}.noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{fedora}.noarch.rpm", "check": { "dnf": "rpm -q rpmfusion-nonfree-release" } },
+    "multilib":          { "check": { "pacman": "pacman-conf --repo-list | grep -qx multilib" }, "manual": { "pacman": "Enable the [multilib] repository in /etc/pacman.conf (uncomment it), run sudo pacman -Syu, then rerun." } },
+    "contrib":           { "manual": { "debian": "Enable the contrib and non-free components in your apt sources, run sudo apt update, then rerun." } }
+  },
+
+  "base": {
+    "apt":    ["ca-certificates", "curl", "gnupg", "git", "unzip", "tar", "xz-utils"],
+    "dnf":    ["ca-certificates", "curl", "gnupg2", "git", "unzip", "tar", "xz"],
+    "pacman": ["ca-certificates", "curl", "gnupg", "git", "unzip", "tar", "xz"]
+  },
+  "fuse2":   { "apt": { "any": ["libfuse2t64", "libfuse2"] }, "dnf": "fuse-libs", "pacman": "fuse2" },
+  "flatpak": { "apt": "flatpak", "dnf": "flatpak", "pacman": "flatpak", "remote": "https://dl.flathub.org/repo/flathub.flatpakrepo" }
+}

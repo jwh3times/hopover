@@ -1,0 +1,23 @@
+{
+  "_comment": "App data Backup-Extras.ps1 archives when it finds it, and Restore.ps1 puts back. Fields: name (archive name; {1} is replaced by what the first * matched), app, paths (first matching pattern wins; * wildcards, ?: = any drive letter, %ENVVARS%), admin (restore needs an elevated prompt, e.g. under Program Files), optional (only when listed in config appData.include), note. Add apps with a pull request, or per user in config.json appData.custom.",
+  "items": [
+    { "name": "app-simhub-dashtemplates", "app": "SimHub", "paths": ["%ProgramFiles(x86)%\\SimHub\\DashTemplates", "?:\\SimHub\\DashTemplates"], "admin": true },
+    { "name": "app-simhub-pluginsdata", "app": "SimHub", "paths": ["%ProgramFiles(x86)%\\SimHub\\PluginsData", "?:\\SimHub\\PluginsData"], "admin": true },
+    { "name": "app-afterburner-profiles", "app": "MSI Afterburner", "paths": ["%ProgramFiles(x86)%\\MSI Afterburner\\Profiles"], "admin": true },
+    { "name": "app-rtss-profiles", "app": "RivaTuner Statistics Server", "paths": ["%ProgramFiles(x86)%\\RivaTuner Statistics Server\\Profiles"], "admin": true },
+    { "name": "app-streamdeck-profiles", "app": "Elgato Stream Deck", "paths": ["%APPDATA%\\Elgato\\StreamDeck\\ProfilesV3", "%APPDATA%\\Elgato\\StreamDeck\\ProfilesV2"] },
+    { "name": "app-streamdeck-backups", "app": "Elgato Stream Deck", "paths": ["%APPDATA%\\Elgato\\StreamDeck\\BackupV3"] },
+    { "name": "app-bambustudio-user", "app": "Bambu Studio", "paths": ["%APPDATA%\\BambuStudio\\user"] },
+    { "name": "app-orcaslicer-user", "app": "OrcaSlicer", "paths": ["%APPDATA%\\OrcaSlicer\\user"] },
+    { "name": "app-prusaslicer", "app": "PrusaSlicer", "paths": ["%APPDATA%\\PrusaSlicer"] },
+    { "name": "app-wow-{1}-wtf", "app": "World of Warcraft", "paths": ["%ProgramFiles(x86)%\\World of Warcraft\\_*_\\WTF", "?:\\World of Warcraft\\_*_\\WTF", "?:\\Games\\World of Warcraft\\_*_\\WTF", "?:\\Program Files (x86)\\World of Warcraft\\_*_\\WTF"] },
+    { "name": "app-wow-{1}-interface", "app": "World of Warcraft", "paths": ["%ProgramFiles(x86)%\\World of Warcraft\\_*_\\Interface", "?:\\World of Warcraft\\_*_\\Interface", "?:\\Games\\World of Warcraft\\_*_\\Interface", "?:\\Program Files (x86)\\World of Warcraft\\_*_\\Interface"] },
+    { "name": "app-obs-studio", "app": "OBS Studio", "paths": ["%APPDATA%\\obs-studio\\basic"] },
+    { "name": "app-notepadplusplus", "app": "Notepad++", "paths": ["%APPDATA%\\Notepad++"] },
+    { "name": "app-filezilla", "app": "FileZilla", "paths": ["%APPDATA%\\FileZilla"], "note": "site manager may hold passwords" },
+    { "name": "app-putty-sessions", "app": "PuTTY", "paths": ["%USERPROFILE%\\.putty"] },
+    { "name": "app-ssh", "app": "OpenSSH", "paths": ["%USERPROFILE%\\.ssh"], "optional": true, "note": "private keys; better kept in a password manager" },
+    { "name": "app-thunderbird-profiles", "app": "Thunderbird", "paths": ["%APPDATA%\\Thunderbird\\Profiles"], "optional": true, "note": "often tens of GB; a cloud backup may already cover it" },
+    { "name": "app-steam-userdata", "app": "Steam", "paths": ["%ProgramFiles(x86)%\\Steam\\userdata"], "admin": true, "optional": true, "note": "local game configs; Steam Cloud covers most games" }
+  ]
+}

@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restore Plan</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --text: #1c1c1e; --muted: #6a6a70; --faint: #9a9aa0;
+  --border: #e2e2de; --hover: #f0f0ec; --active: #e8eefb; --accent: #2b63d9; --accent-text: #ffffff;
+  --code: #f1f1ee; --same: #2f7a4d; --same-bg: #e6f3eb; --differs: #9a5b00; --differs-bg: #fbf0dc;
+  --new: #2b63d9; --new-bg: #e6edfb; --waiting: #75757b; --waiting-bg: #ececea; --danger: #b3261e;
+  --shadow: 0 8px 30px rgba(0,0,0,.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141416; --panel: #1c1c1f; --text: #ececee; --muted: #a0a0a8; --faint: #6e6e76;
+    --border: #2e2e33; --hover: #25252a; --active: #1f2a44; --accent: #6b9bff; --accent-text: #0d1424;
+    --code: #24242a; --same: #7ccf9c; --same-bg: #1b2e23; --differs: #f0b65a; --differs-bg: #33280f;
+    --new: #8fb2ff; --new-bg: #1c2742; --waiting: #a0a0a8; --waiting-bg: #2a2a2f; --danger: #ff8a80;
+    --shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+button { font: inherit; color: inherit; }
+code, pre, .mono { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 12.5px; }
+a { color: var(--accent); }
+
+header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+header .meta { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 200px; }
+.btn { border: 1px solid var(--border); background: var(--panel); border-radius: 6px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 2px 8px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.dirty { color: var(--differs); font-size: 12.5px; font-weight: 600; }
+
+.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: calc(100vh - 53px); }
+nav { border-right: 1px solid var(--border); background: var(--panel); padding: 8px 0 24px; overflow-y: auto; max-height: calc(100vh - 53px); position: sticky; top: 53px; }
+nav h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 14px 16px 6px; font-weight: 600; }
+.nav-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 14px; cursor: pointer; border-left: 3px solid transparent; }
+.nav-row:hover { background: var(--hover); }
+.nav-row.sel { background: var(--active); border-left-color: var(--accent); }
+.nav-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-row .count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.nav-row.off .name { color: var(--faint); text-decoration: line-through; }
+.nav-row input { margin: 0; }
+
+main { padding: 20px 24px 60px; min-width: 0; }
+.title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+main h2 { font-size: 20px; margin: 0; font-weight: 600; }
+.sub { color: var(--muted); margin: 4px 0 12px; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--waiting-bg); color: var(--waiting); font-weight: 600; }
+.badge.elevated { background: var(--differs-bg); color: var(--differs); }
+.note { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; margin: 10px 0; color: var(--muted); }
+.views { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-weight: 600; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 14px 0 6px; }
+.toolbar input[type=search] { flex: 1; min-width: 180px; max-width: 360px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
+.toolbar label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+
+.group { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; overflow: hidden; }
+.group.off { opacity: .55; }
+.group-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.group-head h4 { margin: 0; font-size: 13.5px; font-weight: 600; flex: 1; }
+.group-head .count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 12px; border-top: 1px solid var(--border); cursor: pointer; }
+.item:first-of-type { border-top: 0; }
+.item:hover { background: var(--hover); }
+.item input { margin: 3px 0 0; flex: none; }
+.item .body { flex: 1; min-width: 0; }
+.item .label { overflow-wrap: anywhere; }
+.item .detail { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.item.unticked .label { color: var(--faint); text-decoration: line-through; }
+.pill { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 10px; font-weight: 600; margin-top: 2px; }
+.pill.same { background: var(--same-bg); color: var(--same); }
+.pill.differs { background: var(--differs-bg); color: var(--differs); }
+.pill.new { background: var(--new-bg); color: var(--new); }
+.pill.waiting { background: var(--waiting-bg); color: var(--waiting); }
+.empty { color: var(--faint); padding: 10px 12px; }
+
+table.summary { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+table.summary th, table.summary td { text-align: left; padding: 7px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+table.summary th { border-top: 0; font-size: 12px; color: var(--muted); font-weight: 600; background: var(--hover); }
+table.summary td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.summary tr.link { cursor: pointer; }
+table.summary tr.link:hover td { background: var(--hover); }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0 16px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.steps-help ol { margin: 6px 0; padding-left: 22px; }
+
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal { background: var(--panel); border-radius: 10px; box-shadow: var(--shadow); width: min(1100px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { margin: 0; font-size: 14.5px; flex: 1; overflow-wrap: anywhere; }
+.modal-body { overflow: auto; padding: 14px 18px; }
+.modal-body pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.md h1 { font-size: 20px; } .md h2 { font-size: 17px; margin-top: 22px; } .md h3 { font-size: 15px; }
+.md table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+.md th { background: var(--hover); }
+.md code { background: var(--code); padding: 1px 4px; border-radius: 4px; }
+.md pre { background: var(--code); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md ul, .md ol { padding-left: 22px; }
+
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; box-shadow: var(--shadow); z-index: 30; max-width: calc(100% - 32px); }
+.toast.err { background: var(--danger); color: #fff; }
+.loading { padding: 40px; color: var(--muted); text-align: center; }
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
+  main { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Restore plan</h1>
+  <div class="meta" id="meta">Loading…</div>
+  <span class="dirty" id="dirty" hidden>Unsaved changes</span>
+  <button class="btn" id="btnRefresh" title="Re-read the exports and this PC's current state">Refresh</button>
+  <button class="btn" id="btnPreview" title="Save, then run Restore.ps1 -DryRun">Preview restore</button>
+  <button class="btn primary" id="btnSave">Save plan</button>
+  <button class="btn" id="btnQuit" title="Stop Show-RestorePlan.ps1">Quit</button>
+</header>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"><div class="loading">Reading the exports…</div></main>
+</div>
+
+<script>
+const TOKEN = '__TOKEN__';
+const STATUS_TEXT = { same: 'already here', differs: 'differs here', new: 'not here yet', waiting: "can't yet" };
+const STATUS_HELP = {
+  same: 'This PC already matches the export',
+  differs: 'This PC has it, but different from the export',
+  new: "This PC doesn't have it yet",
+  waiting: "Restore can't do this yet (see the detail)"
+};
+
+let D = null;              // catalog from /api/data
+let skipSteps = new Set(); // step names turned off
+let skip = new Map();      // group id -> Map(lowercase key -> key as written)
+let savedSnapshot = '';
+let view = { type: 'overview' };
+let query = '';
+let hideSame = false;
+
+// ---------- helpers ----------
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k === 'checked' || k === 'hidden' || k === 'disabled') e[k] = !!v;
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return e;
+}
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'X-Token': TOKEN, ...(opts.headers || {}) } });
+  if (!r.ok) {
+    let msg = await r.text();
+    try { msg = JSON.parse(msg).error || msg; } catch (_) {}
+    throw new Error(msg || r.statusText);
+  }
+  return r;
+}
+function toast(text, isErr) {
+  const t = el('div', { class: 'toast' + (isErr ? ' err' : '') }, text);
+  document.body.append(t);
+  setTimeout(() => t.remove(), isErr ? 7000 : 4000);
+}
+const lc = s => String(s).toLowerCase();
+function isSkipped(g, k) { const m = skip.get(g); return !!(m && m.has(lc(k))); }
+function setSkipped(g, k, on) {
+  if (!skip.has(g)) skip.set(g, new Map());
+  if (on) skip.get(g).set(lc(k), k); else skip.get(g).delete(lc(k));
+}
+function allItems(step) { return step.groups.flatMap(g => g.items.map(i => ({ g, i }))); }
+function stepCounts(step) {
+  const all = allItems(step);
+  return { total: all.length, on: all.filter(({ g, i }) => !isSkipped(g.id, i.key)).length };
+}
+function promptLabel(admin) { return admin === true ? 'elevated' : admin === false ? 'normal' : 'both'; }
+
+// ---------- plan ----------
+function loadPlan(text) {
+  skipSteps = new Set(); skip = new Map();
+  if (!text) return;
+  let p;
+  try { p = JSON.parse(text); } catch (e) { toast('restore-plan.json is not valid JSON; starting from "restore everything".', true); return; }
+  for (const s of p.SkipSteps || []) skipSteps.add(lc(s));
+  for (const [g, keys] of Object.entries(p.Skip || {})) for (const k of keys || []) setSkipped(g, k, true);
+}
+// Keys for items no longer exported stay in the plan; they do no harm and survive a disconnected G:.
+function buildPlan() {
+  const Skip = {};
+  for (const g of [...skip.keys()].sort()) {
+    const keys = [...skip.get(g).values()].sort((a, b) => a.localeCompare(b));
+    if (keys.length) Skip[g] = keys;
+  }
+  return {
+    Note: 'Written by Show-RestorePlan.ps1. Restore.ps1 skips the steps in SkipSteps and the items in Skip (by group); everything else is restored.',
+    SkipSteps: [...skipSteps].sort(),
+    Skip
+  };
+}
+const planJson = () => JSON.stringify(buildPlan());
+function markDirty() { document.getElementById('dirty').hidden = planJson() === savedSnapshot; }
+
+async function save() {
+  const plan = buildPlan();
+  plan.Updated = new Date().toLocaleString('sv-SE').slice(0, 16);
+  await api('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plan, null, 2) });
+  savedSnapshot = planJson();
+  markDirty();
+  toast('Saved restore-plan.json in the data folder. Commit and push it so the new PC uses it.');
+}
+
+// ---------- load ----------
+async function load(refresh) {
+  document.getElementById('main').replaceChildren(el('div', { class: 'loading' }, refresh ? 'Re-reading the exports…' : 'Reading the exports…'));
+  const keepDirty = D && planJson() !== savedSnapshot ? buildPlan() : null;
+  const r = await api('/api/data' + (refresh ? '?refresh=1' : ''));
+  D = await r.json();
+  loadPlan(D.planText);
+  savedSnapshot = planJson();
+  if (keepDirty) loadPlan(JSON.stringify(keepDirty));
+  const m = D.meta;
+  document.getElementById('meta').textContent =
+    `Exported from ${m.exportedFrom || '?'} on ${m.exported || '?'} · viewing on ${m.computer} (${m.isAdmin ? 'elevated' : 'normal'} prompt, ${m.shell})`;
+  markDirty();
+  if (!refresh) view = viewFromHash();
+  render();
+}
+
+// ---------- render ----------
+function render() { renderNav(); renderMain(); }
+
+function renderNav() {
+  const nav = document.getElementById('nav');
+  const rows = [el('h3', {}, 'Restore'),
+    el('div', { class: 'nav-row' + (view.type === 'overview' ? ' sel' : ''), onclick: () => go({ type: 'overview' }) },
+      el('span', { class: 'name' }, 'Overview'))];
+  for (const s of D.steps) {
+    const c = stepCounts(s);
+    const off = skipSteps.has(s.name);
+    rows.push(el('div', { class: 'nav-row' + (view.type === 'step' && view.name === s.name ? ' sel' : '') + (off ? ' off' : ''),
+        onclick: () => go({ type: 'step', name: s.name }), title: s.text },
+      el('input', { type: 'checkbox', checked: !off, title: off ? 'Step is off' : 'Step is on',
+        onclick: e => { e.stopPropagation(); toggleStep(s.name, !e.target.checked); } }),
+      el('span', { class: 'name' }, s.name),
+      el('span', { class: 'count' }, c.total ? `${c.on}/${c.total}` : '')));
+  }
+  rows.push(el('h3', {}, 'Reports (view only)'));
+  for (const r of D.reports) {
+    rows.push(el('div', { class: 'nav-row', onclick: () => openFile(r.path, r.title) }, el('span', { class: 'name' }, r.title)));
+  }
+  nav.replaceChildren(...rows);
+}
+
+function go(v) {
+  view = v; query = '';
+  history.replaceState(null, '', v.type === 'step' ? '#step=' + encodeURIComponent(v.name) : location.pathname);
+  render(); window.scrollTo(0, 0);
+}
+function viewFromHash() {
+  const m = location.hash.match(/^#step=(.+)$/);
+  const name = m && decodeURIComponent(m[1]);
+  return name && D.steps.some(s => s.name === name) ? { type: 'step', name } : { type: 'overview' };
+}
+function toggleStep(name, off) { if (off) skipSteps.add(name); else skipSteps.delete(name); markDirty(); render(); }
+
+function renderMain() {
+  const main = document.getElementById('main');
+  if (view.type === 'step') {
+    const s = D.steps.find(x => x.name === view.name);
+    if (s) { main.replaceChildren(...renderStep(s)); return; }
+  }
+  main.replaceChildren(...renderOverview());
+}
+
+function renderOverview() {
+  const m = D.meta;
+  const extras = !m.migrationUp ? `${m.migrationRoot} isn't connected` :
+    m.extrasUpdated ? `${m.extrasCount} archive(s), updated ${m.extrasUpdated}` : 'nothing archived yet (run Backup-Extras.ps1)';
+  const offSteps = [...skipSteps];
+  let unticked = 0; for (const s of D.steps) { const c = stepCounts(s); unticked += c.total - c.on; }
+
+  const rows = D.steps.map(s => {
+    const c = stepCounts(s);
+    const st = { same: 0, differs: 0, new: 0 };
+    for (const { g, i } of allItems(s)) if (!isSkipped(g.id, i.key) && st[i.status] != null) st[i.status]++;
+    const parts = [];
+    if (st.new) parts.push(`${st.new} not here yet`);
+    if (st.differs) parts.push(`${st.differs} differ`);
+    if (st.same) parts.push(`${st.same} already here`);
+    const off = skipSteps.has(s.name);
+    return el('tr', { class: 'link', onclick: () => go({ type: 'step', name: s.name }) },
+      el('td', {}, el('span', { style: off ? 'text-decoration: line-through; color: var(--faint)' : '' }, s.name), el('div', { class: 'detail', style: 'color: var(--muted); font-size: 12.5px' }, s.text)),
+      el('td', {}, el('span', { class: 'badge' + (s.admin === true ? ' elevated' : '') }, promptLabel(s.admin))),
+      el('td', { class: 'num' }, off ? 'off' : c.total ? `${c.on} of ${c.total}` : s.whole ? 'whole step' : 'nothing listed'),
+      el('td', { style: 'color: var(--muted)' }, off ? '' : parts.join(', ')));
+  });
+
+  return [
+    el('h2', {}, 'Overview'),
+    el('dl', { class: 'facts' },
+      el('dt', {}, 'Settings export'), el('dd', {}, `${m.exported || 'unknown'} from ${m.exportedFrom || 'unknown'}`),
+      el('dt', {}, 'Extras'), el('dd', {}, extras),
+      el('dt', {}, 'Data folder'), el('dd', {}, m.repo),
+      el('dt', {}, 'Plan'), el('dd', {}, D.planText ? `${m.planFile} in the data folder` : `no ${m.planFile} yet, so everything is restored`),
+      el('dt', {}, 'Currently'), el('dd', {}, `${offSteps.length} step(s) off${offSteps.length ? ' (' + offSteps.join(', ') + ')' : ''}, ${unticked} item(s) unticked`)),
+    el('div', { class: 'note steps-help' },
+      el('strong', {}, 'How this works'),
+      el('ol', {},
+        el('li', {}, 'Pick a step on the left to see what it restores. Untick anything you don\'t want on the new PC, or turn a whole step off.'),
+        el('li', {}, 'Save plan writes restore-plan.json in your data folder. Commit and push it, so the new PC gets the same choices.'),
+        el('li', {}, 'Restore.ps1 skips whatever the plan lists. Anything new in a later export is restored unless you untick it.')),
+      'The pills compare each item with ', el('em', {}, 'this'), ' PC. On the old PC most things show "already here"; on the new PC they show what\'s still to do.'),
+    el('div', { class: 'toolbar' },
+      el('button', { class: 'btn', onclick: () => { skipSteps = new Set(); skip = new Map(); markDirty(); render(); } }, 'Tick everything'),
+      el('button', { class: 'btn', onclick: () => { loadPlan(D.planText); markDirty(); render(); } }, 'Undo unsaved changes')),
+    el('table', { class: 'summary' },
+      el('thead', {}, el('tr', {}, el('th', {}, 'Step'), el('th', {}, 'Prompt'), el('th', {}, 'Restoring'), el('th', {}, 'Compared with this PC'))),
+      el('tbody', {}, rows))
+  ];
+}
+
+function matches(i) {
+  if (hideSame && i.status === 'same') return false;
+  if (!query) return true;
+  const q = lc(query);
+  return lc(i.label).includes(q) || lc(i.detail || '').includes(q);
+}
+
+function renderStep(s) {
+  const off = skipSteps.has(s.name);
+  const out = [
+    el('div', { class: 'title-row' },
+      el('h2', {}, s.name),
+      el('span', { class: 'badge' + (s.admin === true ? ' elevated' : ''), title: 'Which kind of PowerShell prompt runs this step' }, promptLabel(s.admin) + ' prompt')),
+    el('div', { class: 'sub' }, s.text),
+    el('label', { class: 'switch' },
+      el('input', { type: 'checkbox', checked: !off, onchange: e => toggleStep(s.name, !e.target.checked) }),
+      off ? 'This step is off; Restore.ps1 skips it' : 'Restore this step')
+  ];
+  if (s.note) out.push(el('div', { class: 'note' }, s.note));
+  if (s.views.length) out.push(el('div', { class: 'views' }, s.views.map(v => el('button', { class: 'btn small', onclick: () => openFile(v.path, v.title) }, 'View ' + v.title))));
+
+  if (!s.groups.length) {
+    out.push(el('div', { class: 'note' }, s.whole ? 'Nothing to pick here; the step is on or off as a whole.'
+      : 'Nothing to pick yet. If the step stays on, it restores whatever is there when Restore.ps1 runs.'));
+    return out;
+  }
+  const search = el('input', { type: 'search', placeholder: 'Filter items', value: query,
+    oninput: e => { query = e.target.value; const pos = e.target.selectionStart; renderMain(); const n = document.querySelector('main input[type=search]'); n.focus(); n.setSelectionRange(pos, pos); } });
+  out.push(el('div', { class: 'toolbar' }, search,
+    el('label', {}, el('input', { type: 'checkbox', checked: hideSame, onchange: e => { hideSame = e.target.checked; renderMain(); } }), 'Hide items already on this PC')));
+
+  for (const g of s.groups) {
+    const shown = g.items.filter(matches);
+    const on = g.items.filter(i => !isSkipped(g.id, i.key)).length;
+    const setAll = val => { for (const i of shown) setSkipped(g.id, i.key, !val); markDirty(); render(); };
+    const box = el('div', { class: 'group' + (off ? ' off' : '') },
+      el('div', { class: 'group-head' },
+        el('h4', {}, g.title),
+        el('span', { class: 'count' }, `${on} of ${g.items.length} ticked`),
+        el('button', { class: 'btn small', onclick: () => setAll(true), title: 'Tick the items shown' }, 'All'),
+        el('button', { class: 'btn small', onclick: () => setAll(false), title: 'Untick the items shown' }, 'None')));
+    if (g.note) box.append(el('div', { class: 'note', style: 'margin: 8px 12px' }, g.note));
+    if (!shown.length) box.append(el('div', { class: 'empty' }, 'No items match.'));
+    for (const i of shown) {
+      const ticked = !isSkipped(g.id, i.key);
+      const row = el('div', { class: 'item' + (ticked ? '' : ' unticked'),
+          onclick: e => { if (e.target.closest('button')) return; setSkipped(g.id, i.key, ticked); markDirty(); render(); } },
+        el('input', { type: 'checkbox', checked: ticked, onclick: e => e.preventDefault(), tabindex: '-1' }),
+        el('div', { class: 'body' },
+          el('div', { class: 'label' + (i.viewKind === 'file' || g.id !== 'prefs' ? ' mono' : '') }, i.label),
+          i.detail ? el('div', { class: 'detail' }, i.detail) : null),
+        i.status ? el('span', { class: 'pill ' + i.status, title: STATUS_HELP[i.status] || '' }, STATUS_TEXT[i.status] || i.status) : null,
+        i.view ? el('button', { class: 'btn small', onclick: () => i.viewKind === 'archive' ? openArchive(i.view) : openFile(i.view, i.label) }, 'View') : null);
+      box.append(row);
+    }
+    out.push(box);
+  }
+  return out;
+}
+
+// ---------- viewer ----------
+function modal(title, subtitle, body) {
+  const bg = el('div', { class: 'modal-bg', onclick: e => { if (e.target === bg) bg.remove(); } },
+    el('div', { class: 'modal', role: 'dialog', 'aria-label': title },
+      el('div', { class: 'modal-head' }, el('h3', {}, title, subtitle ? el('div', { style: 'font-weight: 400; color: var(--muted); font-size: 12px' }, subtitle) : null),
+        el('button', { class: 'btn small', onclick: () => bg.remove() }, 'Close')),
+      el('div', { class: 'modal-body' }, body)));
+  document.body.append(bg);
+  const esc = e => { if (e.key === 'Escape') { bg.remove(); document.removeEventListener('keydown', esc); } };
+  document.addEventListener('keydown', esc);
+  return bg;
+}
+async function openFile(path, title) {
+  const body = el('div', {}, el('div', { class: 'loading' }, 'Loading…'));
+  modal(title || path, path, body);
+  try {
+    const text = await (await api('/api/file?path=' + encodeURIComponent(path))).text();
+    if (/\.md$/i.test(path)) { const d = el('div', { class: 'md' }); d.innerHTML = markdown(text, path); body.replaceChildren(d); }
+    else body.replaceChildren(el('pre', { class: 'raw' }, text));
+  } catch (e) { body.replaceChildren(el('div', { class: 'note' }, e.message)); }
+}
+async function openArchive(name) {
+  const body = el('div', {}, el('div', { class: 'loading' }, 'Listing the archive…'));
+  modal(name, 'Contents of the extras archive', body);
+  try { body.replaceChildren(el('pre', { class: 'raw' }, await (await api('/api/archive?name=' + encodeURIComponent(name))).text())); }
+  catch (e) { body.replaceChildren(el('div', { class: 'note' }, e.message)); }
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[data-md]');
+  if (a) { e.preventDefault(); openFile(a.dataset.md, a.textContent); }
+});
+
+// Small Markdown renderer for the repo's reports: headings, tables, lists, code, bold, links.
+function markdown(src, path) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // Links stay in the folder the page came from: "tool:" (the tool's docs) or the data folder.
+  const prefix = path.startsWith('tool:') ? 'tool:' : '';
+  const bare = path.slice(prefix.length);
+  const dir = bare.includes('/') ? bare.slice(0, bare.lastIndexOf('/') + 1) : '';
+  const resolve = u => { const parts = (dir + u).split('/'); const out = []; for (const p of parts) { if (p === '..') out.pop(); else if (p !== '.') out.push(p); } return prefix + out.join('/'); };
+  const inline = s => {
+    const codes = [];
+    s = esc(s).replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return '\u0000' + (codes.length - 1) + '\u0000'; });
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => /^https?:/i.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>`
+        : /\.md$/i.test(u) ? `<a href="#" data-md="${resolve(u)}">${t}</a>` : t);
+    return s.replace(/\u0000(\d+)\u0000/g, (m, n) => `<code>${codes[n]}</code>`);
+  };
+  const cells = l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+  const lines = src.replace(/\r/g, '').split('\n');
+  let html = '', i = 0;
+  const isBlockStart = l => /^(#{1,6}\s|```|\s*[-*]\s|\s*\d+\.\s|\|)/.test(l);
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) { i++; continue; }
+    if (/^```/.test(l)) {
+      const buf = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++; html += `<pre><code>${esc(buf.join('\n'))}</code></pre>`; continue;
+    }
+    const h = l.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; i++; continue; }
+    if (/^\s*\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) {
+      const head = cells(l); i += 2;
+      let t = '<table><thead><tr>' + head.map(c => `<th>${inline(c)}</th>`).join('') + '</tr></thead><tbody>';
+      while (i < lines.length && /^\s*\|/.test(lines[i])) { t += '<tr>' + cells(lines[i]).map(c => `<td>${inline(c)}</td>`).join('') + '</tr>'; i++; }
+      html += t + '</tbody></table>'; continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l);
+      let t = ordered ? '<ol>' : '<ul>';
+      while (i < lines.length && (/^\s*([-*]|\d+\.)\s/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && !/^\s*\|/.test(lines[i])))) {
+        if (/^\s+```/.test(lines[i])) {
+          // A fenced block indented under a list item belongs to that item.
+          const buf = []; i++;
+          while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++].replace(/^\s{1,4}/, ''));
+          i++;
+          t = t.replace(/<\/li>$/, `<pre><code>${esc(buf.join('\n'))}</code></pre></li>`);
+          continue;
+        }
+        const m = lines[i].match(/^(\s*)(?:[-*]|\d+\.)\s+(.*)$/);
+        if (m) {
+          const depth = Math.floor(m[1].length / 2);
+          const text = m[2].replace(/^\[ \]\s*/, '☐ ').replace(/^\[x\]\s*/i, '☑ ');
+          t += `<li style="margin-left:${depth * 18}px">${inline(text)}</li>`;
+        } else t = t.replace(/<\/li>$/, ' ' + inline(lines[i].trim()) + '</li>');
+        i++;
+      }
+      html += t + (ordered ? '</ol>' : '</ul>'); continue;
+    }
+    const buf = [];
+    while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) buf.push(lines[i++]);
+    if (!buf.length) buf.push(lines[i++]);
+    html += `<p>${inline(buf.join(' '))}</p>`;
+  }
+  return html;
+}
+
+// ---------- buttons ----------
+document.getElementById('btnSave').onclick = () => save().catch(e => toast('Save failed: ' + e.message, true));
+document.getElementById('btnRefresh').onclick = () => load(true).catch(e => toast(e.message, true));
+document.getElementById('btnPreview').onclick = async () => {
+  const body = el('div', {}, el('div', { class: 'loading' }, 'Running Restore.ps1 -DryRun… this can take a minute.'));
+  try {
+    if (planJson() !== savedSnapshot) await save();
+    modal('Preview: Restore.ps1 -DryRun', `Runs from this ${D.meta.isAdmin ? 'elevated' : 'normal'} prompt and changes nothing. Steps for the other kind of prompt are listed at the end.`, body);
+    const text = await (await api('/api/dryrun', { method: 'POST' })).text();
+    body.replaceChildren(el('pre', { class: 'raw' }, text));
+  } catch (e) { body.replaceChildren(el('div', { class: 'note' }, e.message)); toast(e.message, true); }
+};
+document.getElementById('btnQuit').onclick = async () => {
+  if (planJson() !== savedSnapshot && !document.getElementById('dirty').dataset.warned) {
+    document.getElementById('dirty').dataset.warned = '1';
+    toast('You have unsaved changes. Save first, or press Quit again to discard them.', true);
+    return;
+  }
+  try { await api('/api/quit', { method: 'POST' }); } catch (_) {}
+  document.body.replaceChildren(el('div', { class: 'loading' }, 'Stopped. You can close this tab; run Show-RestorePlan.ps1 to open it again.'));
+};
+window.addEventListener('beforeunload', e => { if (D && planJson() !== savedSnapshot) { e.preventDefault(); e.returnValue = ''; } });
+
+load(false).catch(e => { document.getElementById('main').replaceChildren(el('div', { class: 'note' }, 'Could not load: ' + e.message)); });
+</script>
+</body>
+</html>
