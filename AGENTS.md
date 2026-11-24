@@ -25,7 +25,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 ## Rules for changes
 
 - Windows scripts must run in Windows PowerShell 5.1 (a fresh install has nothing newer) and PowerShell 7. Watch for: `$PSScriptRoot` is empty in `param()` defaults; `ConvertFrom-Json` returns a top-level array as one object; variable names are case-insensitive (`$s` is `$S`); `powershell -File` passes `a,b` as one string (split list parameters with `Split-List`). Every script uses `[CmdletBinding(PositionalBinding = $false)]`.
-- `restore_linux.py` runs on the distro's own `python3`, as old as 3.8: ruff targets `py38` and rejects newer syntax. CI's unit tests run on 3.9, the oldest Python uv still installs.
+- `restore_linux.py` runs on the distro's own `python3`, as old as 3.8: ruff targets `py38` and rejects newer syntax. CI's unit tests run on the newest Python, `.python-version`'s 3.15; nothing runs them on 3.8, so the py38 target is the floor's only guard.
 - Keep `*.sh` and `*.py` LF-only (`.gitattributes` enforces it).
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
