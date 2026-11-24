@@ -1,0 +1,42 @@
+# Dependabot version updates, checked every day at 05:00 US Eastern. Security updates are a
+# repository setting (Settings > Advanced Security) and are not limited by the schedule here.
+#
+# Minor and patch updates arrive as one pull request per ecosystem; each major arrives on its own.
+# The tool itself has no dependencies: these are the development tools and the workflows' actions.
+# PSScriptAnalyzer and Pester come from the PowerShell Gallery, which Dependabot does not cover
+# (docs/agents/dependabot.md).
+version: 2
+updates:
+  # The dev tools: pyproject.toml and uv.lock (ruff, shellcheck-py).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: daily
+      time: "05:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: build(deps)
+    groups:
+      python-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Action versions in .github/workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: "05:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
