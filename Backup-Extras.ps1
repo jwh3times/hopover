@@ -261,7 +261,8 @@ if (Test-Path -LiteralPath $DevRoot) {
             foreach ($r in $repos) {
                 if ($UseOnlyRepos -contains $r.Path) { continue }
                 $repo = Join-Path $devFull $r.Path
-                if (-not @(git -C $repo status --porcelain 2>$null).Count) { continue }
+                $dirty = @(git -C $repo status --porcelain 2>$null)
+                if (-not $dirty.Count) { continue }
                 $safe = $r.Path -replace '[\\/]', '__'
                 # git writes the file itself, so line endings and binary hunks survive.
                 $patchFile = Join-Path $patchDir "$safe.patch"

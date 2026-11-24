@@ -55,17 +55,44 @@ STEPS = [
     ("docker-volumes", "Docker named volumes from the extras archive"),
 ]
 
-DEFAULT_LINUX = {"devRoot": "~/dev", "prefer": ["vendor", "distro", "portable", "flatpak"], "aur": "auto",
-                 "flatpak": True, "nodeMajor": 24, "extra": [], "skip": []}
-TIER_OF = {"repo": "vendor", "deb": "vendor", "rpm": "vendor", "script": "vendor", "aur": "vendor",
-           "distro": "distro", "appimage": "portable", "tarball": "portable", "flatpak": "flatpak"}
-UBUNTU_VERSIONS = {"jammy": "22.04", "noble": "24.04", "oracular": "24.10", "plucky": "25.04",
-                   "questing": "25.10", "resolute": "26.04"}
+DEFAULT_LINUX = {
+    "devRoot": "~/dev",
+    "prefer": ["vendor", "distro", "portable", "flatpak"],
+    "aur": "auto",
+    "flatpak": True,
+    "nodeMajor": 24,
+    "extra": [],
+    "skip": [],
+}
+TIER_OF = {
+    "repo": "vendor",
+    "deb": "vendor",
+    "rpm": "vendor",
+    "script": "vendor",
+    "aur": "vendor",
+    "distro": "distro",
+    "appimage": "portable",
+    "tarball": "portable",
+    "flatpak": "flatpak",
+}
+UBUNTU_VERSIONS = {
+    "jammy": "22.04",
+    "noble": "24.04",
+    "oracular": "24.10",
+    "plucky": "25.04",
+    "questing": "25.10",
+    "resolute": "26.04",
+}
 DEBIAN_VERSIONS = {"bullseye": "11", "bookworm": "12", "trixie": "13", "forky": "14"}
 # Newest releases vendors usually publish for; used when this release isn't published yet.
-APT_FALLBACK = {"ubuntu": [("24.04", "noble"), ("22.04", "jammy")], "debian": [("13", "trixie"), ("12", "bookworm")]}
+APT_FALLBACK = {
+    "ubuntu": [("24.04", "noble"), ("22.04", "jammy")],
+    "debian": [("13", "trixie"), ("12", "bookworm")],
+}
 # Text that marks a copied config file as written for Windows.
-WINDOWS_ISMS = re.compile(r"(?i)(\bpowershell(\.exe)?\b|\bpwsh\.exe\b|\.ps1\b|\.exe\b|\.cmd\b|\b[a-z]:(\\\\|\\|/))")
+WINDOWS_ISMS = re.compile(
+    r"(?i)(\bpowershell(\.exe)?\b|\bpwsh\.exe\b|\.ps1\b|\.exe\b|\.cmd\b|\b[a-z]:(\\\\|\\|/))"
+)
 
 Proc = namedtuple("Proc", "code out")
 
@@ -101,7 +128,7 @@ def good(text):
 # ---------------------------------------------------------------------------
 def load_json(path, default=None):
     try:
-        with open(path, encoding="utf-8-sig") as f:   # PowerShell 5.1 writes a BOM
+        with open(path, encoding="utf-8-sig") as f:  # PowerShell 5.1 writes a BOM
             return json.load(f)
     except FileNotFoundError:
         return default
@@ -127,7 +154,9 @@ def download(url, dest, timeout=120):
 def http_ok(url, timeout=20):
     for method in ("HEAD", "GET"):
         try:
-            req = urllib.request.Request(url, method=method, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"})
+            req = urllib.request.Request(
+                url, method=method, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"}
+            )
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.status < 400
         except urllib.error.HTTPError as e:
@@ -150,7 +179,9 @@ def github_asset(repo, pattern):
         if token:
             headers["Authorization"] = f"Bearer {token}"
         try:
-            _GITHUB_CACHE[repo] = json.loads(http_get(f"https://api.github.com/repos/{repo}/releases/latest", headers=headers))
+            _GITHUB_CACHE[repo] = json.loads(
+                http_get(f"https://api.github.com/repos/{repo}/releases/latest", headers=headers)
+            )
         except Exception as e:
             _GITHUB_CACHE[repo] = {"_error": str(e)}
     rel = _GITHUB_CACHE[repo]
@@ -199,11 +230,19 @@ class System:
             if self.id == "ubuntu" or "ubuntu" in self.like or osr.get("UBUNTU_CODENAME"):
                 self.base = "ubuntu"
                 self.codename = osr.get("UBUNTU_CODENAME") or codename
-                self.base_version = self.version_id if self.id == "ubuntu" else UBUNTU_VERSIONS.get(self.codename, "")
+                self.base_version = (
+                    self.version_id
+                    if self.id == "ubuntu"
+                    else UBUNTU_VERSIONS.get(self.codename, "")
+                )
             else:
                 self.base = "debian"
                 self.codename = osr.get("DEBIAN_CODENAME") or codename
-                self.base_version = self.version_id.split(".")[0] if self.id == "debian" else DEBIAN_VERSIONS.get(self.codename, "")
+                self.base_version = (
+                    self.version_id.split(".")[0]
+                    if self.id == "debian"
+                    else DEBIAN_VERSIONS.get(self.codename, "")
+                )
         elif self.family == "dnf":
             self.base = "fedora" if "fedora" in ids else (self.id or "fedora")
             self.fedora = self.version_id
@@ -211,14 +250,18 @@ class System:
             self.base = "arch"
 
         self.machine = platform.machine()
-        self.dpkg_arch = {"x86_64": "amd64", "aarch64": "arm64", "armv7l": "armhf"}.get(self.machine, self.machine)
+        self.dpkg_arch = {"x86_64": "amd64", "aarch64": "arm64", "armv7l": "armhf"}.get(
+            self.machine, self.machine
+        )
         self.goarch = {"x86_64": "amd64", "aarch64": "arm64"}.get(self.machine, self.machine)
         self.is_root = os.geteuid() == 0
         self.user = getpass.getuser()
         self.home = Path.home()
         self.systemd = os.path.isdir("/run/systemd/system")
         self.aur_helper = next((h for h in ("paru", "yay") if shutil.which(h)), None)
-        self.tags = {t for t in [self.id, self.family, self.base] + self.like if t} | {f"id:{self.id}"}
+        self.tags = {t for t in [self.id, self.family, self.base] + self.like if t} | {
+            f"id:{self.id}"
+        }
 
     def describe(self):
         bits = [self.pretty, f"{self.family or 'unknown'} family"]
@@ -256,9 +299,14 @@ class Runner:
         if show:
             print(color("90", f"  $ {prefix}{shown}"))
         try:
-            p = subprocess.run(argv, env=run_env, cwd=cwd, text=True,
-                               stdout=subprocess.PIPE if capture else None,
-                               stderr=subprocess.STDOUT if capture else None)
+            p = subprocess.run(
+                argv,
+                env=run_env,
+                cwd=cwd,
+                text=True,
+                stdout=subprocess.PIPE if capture else None,
+                stderr=subprocess.STDOUT if capture else None,
+            )
         except FileNotFoundError as e:
             return Proc(127, str(e))
         return Proc(p.returncode, p.stdout or "")
@@ -267,7 +315,9 @@ class Runner:
         """Read-only command, run quietly even in a dry run; stderr is dropped."""
         argv = ["bash", "-c", cmd] if isinstance(cmd, str) else [str(a) for a in cmd]
         try:
-            p = subprocess.run(argv, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p = subprocess.run(
+                argv, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            )
         except FileNotFoundError:
             return Proc(127, "")
         return Proc(p.returncode, p.stdout or "")
@@ -281,7 +331,12 @@ class Runner:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(data)
         try:
-            return self.run(["install", "-D", "-m", mode, tmp.name, str(dest)], root=True, show=False).code == 0
+            return (
+                self.run(
+                    ["install", "-D", "-m", mode, tmp.name, str(dest)], root=True, show=False
+                ).code
+                == 0
+            )
         finally:
             os.unlink(tmp.name)
 
@@ -293,7 +348,7 @@ class PackageManager:
     def __init__(self, ctx):
         self.ctx = ctx
         self.family = ctx.sys.family
-        self.ready = False          # metadata refreshed, so availability checks mean something
+        self.ready = False  # metadata refreshed, so availability checks mean something
         self._avail = {}
 
     def refresh(self, upgrade_ok=True):
@@ -307,7 +362,11 @@ class PackageManager:
             code = r.run(["dnf", "makecache"], root=True, change=not self.ctx.args.refresh).code
         else:
             # Arch doesn't support partial upgrades: refresh and upgrade together for real runs.
-            cmd = ["pacman", "-Syu", "--noconfirm"] if (upgrade_ok and not self.ctx.dry) else ["pacman", "-Sy"]
+            cmd = (
+                ["pacman", "-Syu", "--noconfirm"]
+                if (upgrade_ok and not self.ctx.dry)
+                else ["pacman", "-Sy"]
+            )
             code = r.run(cmd, root=True, change=not self.ctx.args.refresh).code
         self.ready = code == 0
         self._avail = {}
@@ -344,7 +403,14 @@ class PackageManager:
             return True
         r = self.ctx.run
         if self.family == "apt":
-            return r.run(["apt-get", "install", "-y", *names], root=True, env={"DEBIAN_FRONTEND": "noninteractive"}).code == 0
+            return (
+                r.run(
+                    ["apt-get", "install", "-y", *names],
+                    root=True,
+                    env={"DEBIAN_FRONTEND": "noninteractive"},
+                ).code
+                == 0
+            )
         if self.family == "dnf":
             return r.run(["dnf", "install", "-y", *names], root=True).code == 0
         return r.run(["pacman", "-S", "--needed", "--noconfirm", *names], root=True).code == 0
@@ -352,7 +418,14 @@ class PackageManager:
     def install_file(self, path):
         r = self.ctx.run
         if self.family == "apt":
-            return r.run(["apt-get", "install", "-y", str(path)], root=True, env={"DEBIAN_FRONTEND": "noninteractive"}).code == 0
+            return (
+                r.run(
+                    ["apt-get", "install", "-y", str(path)],
+                    root=True,
+                    env={"DEBIAN_FRONTEND": "noninteractive"},
+                ).code
+                == 0
+            )
         return r.run(["dnf", "install", "-y", str(path)], root=True).code == 0
 
 
@@ -384,13 +457,25 @@ class Ctx:
 
         plan = {} if args.ignore_plan else (load_json(self.data / "restore-plan.json", {}) or {})
         self.plan_file = None if args.ignore_plan or not plan else self.data / "restore-plan.json"
-        self.skip = {g: {str(k).lower() for k in (keys or [])} for g, keys in (plan.get("Skip") or {}).items()}
+        self.skip = {
+            g: {str(k).lower() for k in (keys or [])}
+            for g, keys in (plan.get("Skip") or {}).items()
+        }
         self.skip_steps = {s.lower() for s in (plan.get("LinuxSkipSteps") or [])}
         self.plan_hits = 0
 
         self.manual = []
         self.results = []
-        self.report = {"installed": [], "present": [], "planned": [], "none": [], "windows_only": [], "unmapped": [], "failed": [], "notes": []}
+        self.report = {
+            "installed": [],
+            "present": [],
+            "planned": [],
+            "none": [],
+            "windows_only": [],
+            "unmapped": [],
+            "failed": [],
+            "notes": [],
+        }
 
     def planned(self, group, key):
         """False when restore-plan.json unticks this item (and counts it)."""
@@ -406,10 +491,18 @@ class Ctx:
     def fmt(self, text, extra=None):
         if not isinstance(text, str):
             return text
-        values = {"base": self.sys.base, "codename": self.sys.codename, "version": self.sys.base_version,
-                  "fedora": self.sys.fedora, "arch": self.sys.dpkg_arch, "rpmarch": self.sys.machine,
-                  "goarch": self.sys.goarch, "node": str(self.linux.get("nodeMajor", 24)), "user": self.sys.user,
-                  "home": str(self.sys.home)}
+        values = {
+            "base": self.sys.base,
+            "codename": self.sys.codename,
+            "version": self.sys.base_version,
+            "fedora": self.sys.fedora,
+            "arch": self.sys.dpkg_arch,
+            "rpmarch": self.sys.machine,
+            "goarch": self.sys.goarch,
+            "node": str(self.linux.get("nodeMajor", 24)),
+            "user": self.sys.user,
+            "home": str(self.sys.home),
+        }
         values.update(extra or {})
         return re.sub(r"\{(\w+)\}", lambda m: values.get(m.group(1), m.group(0)), text)
 
@@ -439,11 +532,21 @@ def add_profile_paths(ctx, dirs):
     want = list(dict.fromkeys(have + [str(d).replace(str(ctx.sys.home), "$HOME") for d in dirs]))
     if old and set(want) == set(have):
         return
-    block = PROFILE_START + "\n" + "".join(f'export PATH="{d}:$PATH"\n' for d in want) + PROFILE_END + "\n"
+    block = (
+        PROFILE_START
+        + "\n"
+        + "".join(f'export PATH="{d}:$PATH"\n' for d in want)
+        + PROFILE_END
+        + "\n"
+    )
     if ctx.dry:
         print(color("36", f"  would: add {', '.join(want)} to PATH in ~/.profile"))
         return
-    text = text.replace(old.group(0), block) if old else (text.rstrip("\n") + "\n\n" + block if text else block)
+    text = (
+        text.replace(old.group(0), block)
+        if old
+        else (text.rstrip("\n") + "\n\n" + block if text else block)
+    )
     profile.write_text(text, encoding="utf-8")
     info(f"PATH in ~/.profile now includes {', '.join(want)} (log out and in, or: . ~/.profile)")
 
@@ -484,7 +587,12 @@ class Catalog:
             if m:
                 key = pat["use"]
                 if key in self.packages:
-                    return ("entry", key, self.packages[key], {str(i + 1): g for i, g in enumerate(m.groups())})
+                    return (
+                        "entry",
+                        key,
+                        self.packages[key],
+                        {str(i + 1): g for i, g in enumerate(m.groups())},
+                    )
         for w in self.windows_only:
             if fnmatch.fnmatchcase(sid, w.lower()):
                 return ("windows-only", source_id, None, {})
@@ -546,7 +654,7 @@ class Resolver:
         manual = d.get("manual") or {}
         if manual.get(s.family) or manual.get(s.base):
             return False
-        return True    # nothing needed on this family
+        return True  # nothing needed on this family
 
     def pending_prereqs(self, m):
         """Prerequisites of m that still need setting up on this system."""
@@ -569,21 +677,30 @@ class Resolver:
             return False
         if m.get("except") and self.tags_match(m["except"]):
             return False
-        arches = m.get("arches") or (["x86_64"] if kind in ("deb", "rpm", "appimage", "tarball") else None)
+        arches = m.get("arches") or (
+            ["x86_64"] if kind in ("deb", "rpm", "appimage", "tarball") else None
+        )
         if arches and s.machine not in arches:
             return False
         if kind == "repo":
             rdef = self.cat.repos.get(m["repo"], {}).get(s.family)
             if not rdef:
                 return False
-            if s.family == "apt" and rdef.get("arches") and s.dpkg_arch not in rdef["arches"].split(","):
+            if (
+                s.family == "apt"
+                and rdef.get("arches")
+                and s.dpkg_arch not in rdef["arches"].split(",")
+            ):
                 return False
-        elif kind == "deb" and s.family != "apt":
-            return False
-        elif kind == "rpm" and s.family != "dnf":
+        elif kind == "deb" and s.family != "apt" or kind == "rpm" and s.family != "dnf":
             return False
         elif kind == "aur":
-            if s.family != "pacman" or self.ctx.linux.get("aur") == "never" or not s.aur_helper or s.is_root:
+            if (
+                s.family != "pacman"
+                or self.ctx.linux.get("aur") == "never"
+                or not s.aur_helper
+                or s.is_root
+            ):
                 return False
         elif kind == "distro":
             if names_of(pick(m["distro"], s)) is None:
@@ -606,7 +723,11 @@ class Resolver:
         """Why a method that would otherwise fit this distro can't be used, for the report."""
         s = self.ctx.sys
         if kind == "aur" and s.family == "pacman" and self.ctx.linux.get("aur") != "never":
-            return "it's in the AUR; install yay or paru and run this as your user (not root)" if (not s.aur_helper or s.is_root) else None
+            return (
+                "it's in the AUR; install yay or paru and run this as your user (not root)"
+                if (not s.aur_helper or s.is_root)
+                else None
+            )
         for p in self.prereqs_of(m):
             if not self.prereq_possible(p):
                 manual = self.cat.prereqs.get(p, {}).get("manual") or {}
@@ -628,12 +749,16 @@ class Resolver:
                 why = self.blocked_reason(m, kind)
                 if why:
                     blocked.append((self.rank(m, kind), why))
-        choice = self._first_working(key, name, sorted(options, key=lambda o: (o[0], o[1])), vars, source)
+        choice = self._first_working(
+            key, name, sorted(options, key=lambda o: (o[0], o[1])), vars, source
+        )
         best_rank = self.rank(choice.method, choice.kind) if choice else len(self.prefer) + 1
         for rank, why in blocked:
             if rank < best_rank:
                 if choice:
-                    self.ctx.todo(f"{name}: installed as {choice.kind}; for the preferred package, {why[0].lower() + why[1:]}")
+                    self.ctx.todo(
+                        f"{name}: installed as {choice.kind}; for the preferred package, {why[0].lower() + why[1:]}"
+                    )
                 else:
                     self.ctx.report["failed"].append((name, why))
                     return False
@@ -662,7 +787,10 @@ class Resolver:
                 pkg = m.get("package")
                 pkgs = [self.ctx.fmt(p, vars) for p in (pkg if isinstance(pkg, list) else [pkg])]
             elif kind == "aur":
-                pkgs = [self.ctx.fmt(p, vars) for p in (m["aur"] if isinstance(m["aur"], list) else [m["aur"]])]
+                pkgs = [
+                    self.ctx.fmt(p, vars)
+                    for p in (m["aur"] if isinstance(m["aur"], list) else [m["aur"]])
+                ]
             elif kind == "flatpak":
                 pkgs = [m["flatpak"]]
             elif kind in ("deb", "rpm", "appimage", "tarball"):
@@ -703,8 +831,11 @@ def source_ids(ctx):
         out.append(("linux:claude-code", "Claude Code config"))
     if ctx.args.only:
         wanted = {x.strip().lower() for x in ctx.args.only.split(",") if x.strip()}
-        out = [o for o in out if o[0].lower() in wanted] + [(x, "--only") for x in ctx.args.only.split(",")
-                                                            if x.strip() and x.strip().lower() not in {o[0].lower() for o in out}]
+        out = [o for o in out if o[0].lower() in wanted] + [
+            (x, "--only")
+            for x in ctx.args.only.split(",")
+            if x.strip() and x.strip().lower() not in {o[0].lower() for o in out}
+        ]
     return out
 
 
@@ -712,8 +843,12 @@ def resolve_all(ctx, cat):
     res = Resolver(ctx, cat)
     skip_cfg = {str(x).lower() for x in ctx.linux.get("skip") or []}
     choices, seen = [], {}
-    for sid, src in source_ids(ctx):
-        unticked = not ctx.planned("choco", sid[6:]) if sid.startswith("choco:") else not ctx.planned("winget", sid)
+    for sid, _src in source_ids(ctx):
+        unticked = (
+            not ctx.planned("choco", sid[6:])
+            if sid.startswith("choco:")
+            else not ctx.planned("winget", sid)
+        )
         if sid.lower() in skip_cfg or unticked or not ctx.planned("linux-packages", sid):
             ctx.report["planned"].append(sid)
             continue
@@ -749,7 +884,7 @@ def resolve_all(ctx, cat):
             ctx.report["none"].append((name, entry["none"], entry.get("alternatives", [])))
             continue
         choice = res.choose(key, entry, vars, sid)
-        if choice is False:          # already reported with the reason
+        if choice is False:  # already reported with the reason
             continue
         if not choice:
             ctx.report["failed"].append((name, "no install method works on this system"))
@@ -793,13 +928,21 @@ def add_apt_repo(ctx, rid, rdef):
     sources_dir = Path("/etc/apt/sources.list.d")
     keyring = rdef.get("keyring", f"/etc/apt/keyrings/{rid}.gpg")
     dest = sources_dir / rdef.get("file", f"{rid}.list")
-    pairs = [(s.base_version, s.codename)] + [p for p in APT_FALLBACK.get(s.base, []) if p != (s.base_version, s.codename)]
-    templated = "{codename}" in rdef["suite"] or "{version}" in rdef["url"] or "{codename}" in rdef["url"]
+    pairs = [(s.base_version, s.codename)] + [
+        p for p in APT_FALLBACK.get(s.base, []) if p != (s.base_version, s.codename)
+    ]
+    templated = (
+        "{codename}" in rdef["suite"] or "{version}" in rdef["url"] or "{codename}" in rdef["url"]
+    )
     url = suite = None
-    for ver, cn in (pairs if templated else pairs[:1]):
+    for ver, cn in pairs if templated else pairs[:1]:
         extra = {"version": ver, "codename": cn}
         u, su = ctx.fmt(rdef["url"], extra).rstrip("/"), ctx.fmt(rdef["suite"], extra)
-        if not templated or http_ok(f"{u}/dists/{su}/InRelease") or http_ok(f"{u}/dists/{su}/Release"):
+        if (
+            not templated
+            or http_ok(f"{u}/dists/{su}/InRelease")
+            or http_ok(f"{u}/dists/{su}/Release")
+        ):
             keys = rdef["key"] if isinstance(rdef["key"], list) else [rdef["key"]]
             url, suite, keyurls = u, su, [ctx.fmt(k, extra) for k in keys]
             if templated and (ver, cn) != (s.base_version, s.codename):
@@ -809,7 +952,9 @@ def add_apt_repo(ctx, rid, rdef):
         warn(f"{rid}: no published suite for this release")
         return False
     # Don't add a second entry for a repo the vendor's own package already configured.
-    existing = ctx.run.query(f"grep -rlsF {shlex.quote(url)} /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null").out.split()
+    existing = ctx.run.query(
+        f"grep -rlsF {shlex.quote(url)} /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null"
+    ).out.split()
     if any(Path(e) != dest for e in existing):
         info(f"{rid}: already configured in {existing[0]}")
         return True
@@ -828,7 +973,12 @@ def add_apt_repo(ctx, rid, rdef):
         for keyurl in keyurls:
             key = http_get(keyurl)
             if key.lstrip().startswith(b"-----BEGIN") and not rdef.get("keepArmored"):
-                p = subprocess.run(["gpg", "--dearmor"], input=key, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                p = subprocess.run(
+                    ["gpg", "--dearmor"],
+                    input=key,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
                 if p.returncode != 0 or not p.stdout:
                     warn(f"{rid}: couldn't dearmor the signing key {keyurl}")
                     return False
@@ -838,7 +988,10 @@ def add_apt_repo(ctx, rid, rdef):
     run.write_root_file(dest, line)
     pin = rdef.get("pin")
     if pin:
-        run.write_root_file(Path("/etc/apt/preferences.d") / rid, f"Package: *\nPin: origin {pin['origin']}\nPin-Priority: {pin['priority']}\n")
+        run.write_root_file(
+            Path("/etc/apt/preferences.d") / rid,
+            f"Package: *\nPin: origin {pin['origin']}\nPin-Priority: {pin['priority']}\n",
+        )
     return True
 
 
@@ -881,19 +1034,28 @@ def install_appimage(ctx, choice):
     target.chmod(0o755)
     desktop = ctx.sys.home / ".local/share/applications" / f"{slug}.desktop"
     desktop.parent.mkdir(parents=True, exist_ok=True)
-    desktop.write_text(f"[Desktop Entry]\nType=Application\nName={choice.name}\nExec={target} %U\nTerminal=false\nCategories=Utility;\n", encoding="utf-8")
+    desktop.write_text(
+        f"[Desktop Entry]\nType=Application\nName={choice.name}\nExec={target} %U\nTerminal=false\nCategories=Utility;\n",
+        encoding="utf-8",
+    )
     return True
 
 
 def install_tarball(ctx, choice):
     import tarfile
+
     bins = choice.method.get("bin") or []
     local_bin = ctx.sys.home / ".local/bin"
     if bins and all((local_bin / b).exists() or ctx.tool(b) for b in bins):
         ctx.report["present"].append(choice.name)
         return True
     if ctx.dry:
-        print(color("36", f"  would: download {choice.url} and put {', '.join(bins) or 'it'} in ~/.local/bin"))
+        print(
+            color(
+                "36",
+                f"  would: download {choice.url} and put {', '.join(bins) or 'it'} in ~/.local/bin",
+            )
+        )
         return True
     dest = ctx.sys.home / ".local/opt" / choice.key.lower()
     dest.mkdir(parents=True, exist_ok=True)
@@ -940,7 +1102,11 @@ def step_packages(ctx):
     added = False
     for rid in repos:
         rdef = cat.repos[rid].get(s.family)
-        ok = add_apt_repo(ctx, rid, dict(rdef, name=cat.repos[rid].get("name", rid))) if s.family == "apt" else add_dnf_repo(ctx, rid, rdef)
+        ok = (
+            add_apt_repo(ctx, rid, dict(rdef, name=cat.repos[rid].get("name", rid)))
+            if s.family == "apt"
+            else add_dnf_repo(ctx, rid, rdef)
+        )
         added = added or ok
         if not ok:
             for c in [c for c in choices if c.kind == "repo" and c.method["repo"] == rid]:
@@ -1035,7 +1201,11 @@ def step_packages(ctx):
     if any(c.kind == "appimage" for c in portable):
         fuse = names_of(pick(cat.fuse2, s))
         if fuse:
-            pick_name = next((n for n in fuse[1] if pm.available(n) is not False), None) if fuse[0] == "any" else None
+            pick_name = (
+                next((n for n in fuse[1] if pm.available(n) is not False), None)
+                if fuse[0] == "any"
+                else None
+            )
             fnames = [pick_name] if pick_name else (fuse[1] if fuse[0] == "all" else fuse[1][:1])
             if not all(pm.installed(n) for n in fnames):
                 pm.install(fnames)
@@ -1050,12 +1220,22 @@ def step_packages(ctx):
     if flat:
         if not ctx.tool("flatpak"):
             pm.install([pick(cat.flatpak, s) or "flatpak"])
-        ctx.run.run(["flatpak", "remote-add", "--if-not-exists", "flathub", cat.flatpak["remote"]], root=True)
+        ctx.run.run(
+            ["flatpak", "remote-add", "--if-not-exists", "flathub", cat.flatpak["remote"]],
+            root=True,
+        )
         for c in flat:
             if ctx.run.query(["flatpak", "info", c.packages[0]]).code == 0:
                 done(c, True, already=True)
             else:
-                done(c, ctx.run.run(["flatpak", "install", "-y", "--noninteractive", "flathub", c.packages[0]], root=True).code == 0)
+                done(
+                    c,
+                    ctx.run.run(
+                        ["flatpak", "install", "-y", "--noninteractive", "flathub", c.packages[0]],
+                        root=True,
+                    ).code
+                    == 0,
+                )
 
     for c in choices:
         for post in c.method.get("post") or cat.packages.get(c.key, {}).get("post") or []:
@@ -1067,8 +1247,10 @@ def step_packages(ctx):
             ctx.run.run(ctx.fmt(post["cmd"]), root=bool(post.get("root")))
 
     r = ctx.report
-    return (f"{len(r['installed'])} installed, {len(r['present'])} already there, {len(r['failed'])} failed, "
-            f"{len(r['none'])} with no Linux version, {len(r['windows_only'])} Windows-only, {len(r['unmapped'])} not in the catalog")
+    return (
+        f"{len(r['installed'])} installed, {len(r['present'])} already there, {len(r['failed'])} failed, "
+        f"{len(r['none'])} with no Linux version, {len(r['windows_only'])} Windows-only, {len(r['unmapped'])} not in the catalog"
+    )
 
 
 def describe(c, family):
@@ -1092,7 +1274,17 @@ def step_dev_packages(ctx):
     p = load_json(ctx.settings / "dev" / "packages.json")
     if not p:
         return "skipped: no settings/dev/packages.json"
-    extend_path(["~/.local/bin", "~/.cargo/bin", "/usr/local/go/bin", "~/go/bin", "~/.dotnet/tools", "~/.deno/bin", "~/.bun/bin"])
+    extend_path(
+        [
+            "~/.local/bin",
+            "~/.cargo/bin",
+            "/usr/local/go/bin",
+            "~/go/bin",
+            "~/.dotnet/tools",
+            "~/.deno/bin",
+            "~/.bun/bin",
+        ]
+    )
     run, q = ctx.run.run, ctx.run.query
     done, waiting = [], []
 
@@ -1103,7 +1295,11 @@ def step_dev_packages(ctx):
     if npm:
         if ctx.tool("npm"):
             try:
-                have = set(json.loads(q(["npm", "ls", "-g", "--depth=0", "--json"]).out or "{}").get("dependencies", {}))
+                have = set(
+                    json.loads(q(["npm", "ls", "-g", "--depth=0", "--json"]).out or "{}").get(
+                        "dependencies", {}
+                    )
+                )
             except ValueError:
                 have = set()
             todo = [n for n in npm if n not in have]
@@ -1117,7 +1313,11 @@ def step_dev_packages(ctx):
     dotnet = wanted("dotnet", p.get("Dotnet"))
     if dotnet:
         if ctx.tool("dotnet"):
-            have = {l.split()[0].lower() for l in q(["dotnet", "tool", "list", "-g"]).out.splitlines()[2:] if l.strip()}
+            have = {
+                line.split()[0].lower()
+                for line in q(["dotnet", "tool", "list", "-g"]).out.splitlines()[2:]
+                if line.strip()
+            }
             todo = [t for t in dotnet if t.lower() not in have]
             for t in todo:
                 run(["dotnet", "tool", "install", "-g", t])
@@ -1137,7 +1337,11 @@ def step_dev_packages(ctx):
     cargo = wanted("cargo", p.get("Cargo"))
     if cargo:
         if ctx.tool("cargo"):
-            have = {l.split()[0] for l in q(["cargo", "install", "--list"]).out.splitlines() if re.match(r"^\S+ v", l)}
+            have = {
+                line.split()[0]
+                for line in q(["cargo", "install", "--list"]).out.splitlines()
+                if re.match(r"^\S+ v", line)
+            }
             todo = [c for c in cargo if c not in have]
             if todo:
                 run(["cargo", "install", *todo])
@@ -1147,7 +1351,11 @@ def step_dev_packages(ctx):
     uv = wanted("uv", p.get("Uv"))
     if uv:
         if ctx.tool("uv"):
-            have = {l.split()[0] for l in q(["uv", "tool", "list"]).out.splitlines() if l and not l.startswith("-")}
+            have = {
+                line.split()[0]
+                for line in q(["uv", "tool", "list"]).out.splitlines()
+                if line and not line.startswith("-")
+            }
             todo = [t for t in uv if t not in have]
             for t in todo:
                 run(["uv", "tool", "install", t])
@@ -1158,12 +1366,21 @@ def step_dev_packages(ctx):
     if psm:
         if ctx.tool("pwsh"):
             for m in psm:
-                run(["pwsh", "-NoProfile", "-Command", f"if (-not (Get-Module -ListAvailable -Name '{m}')) {{ Install-Module '{m}' -Scope CurrentUser -Force }}"])
+                run(
+                    [
+                        "pwsh",
+                        "-NoProfile",
+                        "-Command",
+                        f"if (-not (Get-Module -ListAvailable -Name '{m}')) {{ Install-Module '{m}' -Scope CurrentUser -Force }}",
+                    ]
+                )
             done.append(f"{len(psm)} PowerShell module(s)")
         else:
             waiting.append("PowerShell")
     if waiting:
-        ctx.todo(f"Dev packages: install {', '.join(waiting)}, then rerun with --steps dev-packages")
+        ctx.todo(
+            f"Dev packages: install {', '.join(waiting)}, then rerun with --steps dev-packages"
+        )
     parts = done + ([f"waiting on {', '.join(waiting)}"] if waiting else [])
     return "; ".join(parts) if parts else "nothing to install"
 
@@ -1217,18 +1434,37 @@ def copy_dir(ctx, rel, dst_dir, skip_windows=True):
         if skip_windows and f.suffix.lower() in (".ps1", ".cmd", ".bat", ".exe"):
             skipped.append(str(sub))
             continue
-        if copy_config(ctx, f"{rel}/{sub.as_posix()}", Path(dst_dir) / sub, quiet=True) in ("copied", "would copy", "would replace"):
+        if copy_config(ctx, f"{rel}/{sub.as_posix()}", Path(dst_dir) / sub, quiet=True) in (
+            "copied",
+            "would copy",
+            "would replace",
+        ):
             n += 1
     if n:
-        print(color("36" if ctx.dry else "0", f"  {'would: copy' if ctx.dry else 'copied'} {n} file(s) from {rel} -> {dst_dir}"))
+        print(
+            color(
+                "36" if ctx.dry else "0",
+                f"  {'would: copy' if ctx.dry else 'copied'} {n} file(s) from {rel} -> {dst_dir}",
+            )
+        )
     return n, skipped
 
 
 # ---------------------------------------------------------------------------
 # Step: git config
 # ---------------------------------------------------------------------------
-DROP_GIT_KEYS = {"core.fscache", "core.symlinks", "core.longpaths", "core.filemode", "http.sslbackend", "http.schannelcheckrevoke",
-                 "credential.helper", "credential.credentialstore", "core.useBuiltinFSMonitor".lower(), "core.fsmonitor"}
+DROP_GIT_KEYS = {
+    "core.fscache",
+    "core.symlinks",
+    "core.longpaths",
+    "core.filemode",
+    "http.sslbackend",
+    "http.schannelcheckrevoke",
+    "credential.helper",
+    "credential.credentialstore",
+    "core.useBuiltinFSMonitor".lower(),
+    "core.fsmonitor",
+}
 
 
 def translate_gitconfig(text):
@@ -1239,9 +1475,11 @@ def translate_gitconfig(text):
         if m:
             section = m.group(1).lower()
             sub = m.group(2) or ""
-            drop_section = (section == "includeif" and WINDOWS_ISMS.search(sub)) or (section == "credential" and sub)
+            drop_section = (section == "includeif" and WINDOWS_ISMS.search(sub)) or (
+                section == "credential" and sub
+            )
             if drop_section:
-                notes.append(f"dropped [{m.group(1)} \"{sub}\"] (Windows path or credential helper)")
+                notes.append(f'dropped [{m.group(1)} "{sub}"] (Windows path or credential helper)')
                 continue
             out.append(line)
             continue
@@ -1254,7 +1492,9 @@ def translate_gitconfig(text):
         key, value = f"{section}.{kv.group(1).lower()}", kv.group(2)
         if key in DROP_GIT_KEYS:
             if key == "credential.helper":
-                notes.append("dropped the Windows credential helper; run 'gh auth setup-git' (or set credential.helper=libsecret)")
+                notes.append(
+                    "dropped the Windows credential helper; run 'gh auth setup-git' (or set credential.helper=libsecret)"
+                )
             continue
         if key == "core.autocrlf":
             out.append(re.sub(r"=.*", "= input", line))
@@ -1283,8 +1523,12 @@ def step_git_config(ctx):
     if (ctx.settings / "dev" / "npmrc").is_file():
         ctx.todo("npm: run 'npm login' (the auth token wasn't exported).")
     if ctx.tool("gh") and ctx.run.query(["gh", "auth", "status"]).code != 0:
-        ctx.todo("GitHub: run 'gh auth login' and 'gh auth setup-git' (before the repos step if cloning asks for credentials).")
-    return f"gitconfig {r1}; gitignore_global {r2}" + (f"; {len(notes)} Windows-only setting(s) dropped" if notes else "")
+        ctx.todo(
+            "GitHub: run 'gh auth login' and 'gh auth setup-git' (before the repos step if cloning asks for credentials)."
+        )
+    return f"gitconfig {r1}; gitignore_global {r2}" + (
+        f"; {len(notes)} Windows-only setting(s) dropped" if notes else ""
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1318,12 +1562,23 @@ def step_repos(ctx):
         if ctx.run.run(["git", "clone", r["Url"], str(target)]).code == 0:
             cloned += 1
             branch = r.get("Branch")
-            if branch and ctx.run.query(["git", "-C", str(target), "branch", "--show-current"]).out.strip() != branch:
-                if ctx.run.run(["git", "-C", str(target), "checkout", branch], show=False).code != 0:
+            if (
+                branch
+                and ctx.run.query(
+                    ["git", "-C", str(target), "branch", "--show-current"]
+                ).out.strip()
+                != branch
+            ):
+                if (
+                    ctx.run.run(["git", "-C", str(target), "checkout", branch], show=False).code
+                    != 0
+                ):
                     notes.append(f"{path}: was on {branch}, which isn't on the remote")
         else:
             notes.append(f"{path}: clone failed")
-    ctx.todo("Repos: put back gitignored local files with --steps dev-extras (listed in settings/dev/repos.md).")
+    ctx.todo(
+        "Repos: put back gitignored local files with --steps dev-extras (listed in settings/dev/repos.md)."
+    )
     return f"cloned {cloned}, already there {there}" + (f"; {'; '.join(notes)}" if notes else "")
 
 
@@ -1337,10 +1592,20 @@ def find_extras(ctx):
             if (c / "manifest.json").exists():
                 return c
         return None
-    name = (ctx.config.get("migrationRoot") or "Hopover").replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    name = (
+        (ctx.config.get("migrationRoot") or "Hopover")
+        .replace("\\", "/")
+        .rstrip("/")
+        .rsplit("/", 1)[-1]
+    )
     user = ctx.sys.user
-    for pattern in (f"/media/{user}/*/{name}/extras", f"/run/media/{user}/*/{name}/extras", f"/media/*/{name}/extras",
-                    f"/mnt/*/{name}/extras", f"/mnt/{name}/extras"):
+    for pattern in (
+        f"/media/{user}/*/{name}/extras",
+        f"/run/media/{user}/*/{name}/extras",
+        f"/media/*/{name}/extras",
+        f"/mnt/*/{name}/extras",
+        f"/mnt/{name}/extras",
+    ):
         for hit in sorted(Path("/").glob(pattern.lstrip("/"))):
             if (hit / "manifest.json").exists():
                 return hit
@@ -1352,7 +1617,13 @@ def extras_items(ctx, prefix):
     if not root:
         return None, []
     m = load_json(root / "manifest.json", {}) or {}
-    items = [i for i in m.get("Items", []) if i.get("File") and i.get("Status") in ("ok", "PARTIAL") and any(i["Name"].startswith(p) for p in prefix)]
+    items = [
+        i
+        for i in m.get("Items", [])
+        if i.get("File")
+        and i.get("Status") in ("ok", "PARTIAL")
+        and any(i["Name"].startswith(p) for p in prefix)
+    ]
     return root, items
 
 
@@ -1385,15 +1656,21 @@ def step_dev_extras(ctx):
     items = [i for i in items if ctx.planned("extras", i["Name"])]
     total = 0
     for i in items:
-        into = ctx.dev_root / "_restored-patches" if i["Name"] == "dev-uncommitted" else ctx.dev_root
+        into = (
+            ctx.dev_root / "_restored-patches" if i["Name"] == "dev-uncommitted" else ctx.dev_root
+        )
         n = extract_zip(ctx, root / i["File"], into)
         info(f"{i['Name']}: {n} file(s){' would be' if ctx.dry else ''} restored")
         total += n
         if i["Name"] == "dev-uncommitted":
-            ctx.todo(f"Uncommitted changes from Windows are in {into}; apply with: git -C <repo> apply <file>.patch")
+            ctx.todo(
+                f"Uncommitted changes from Windows are in {into}; apply with: git -C <repo> apply <file>.patch"
+            )
     others = [i["Name"] for i in extras_items(ctx, ["app-"])[1]]
     if others:
-        ctx.todo(f"Windows app data in the extras archive ({', '.join(others)}): copy what you need into the Linux app's folder (World of Warcraft: into the Wine/Lutris prefix's WoW folder).")
+        ctx.todo(
+            f"Windows app data in the extras archive ({', '.join(others)}): copy what you need into the Linux app's folder (World of Warcraft: into the Wine/Lutris prefix's WoW folder)."
+        )
     return f"{total} file(s) from {len(items)} archive(s)"
 
 
@@ -1414,7 +1691,26 @@ def step_docker_volumes(ctx):
         if not ctx.planned("docker-volumes", v) or v in have:
             continue
         ctx.run.run(["docker", "volume", "create", v])
-        if ctx.run.run(["docker", "run", "--rm", "-v", f"{v}:/data", "-v", f"{vol_dir}:/backup:ro", "alpine", "tar", "xzf", f"/backup/{t.name}", "-C", "/data"]).code == 0:
+        if (
+            ctx.run.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{v}:/data",
+                    "-v",
+                    f"{vol_dir}:/backup:ro",
+                    "alpine",
+                    "tar",
+                    "xzf",
+                    f"/backup/{t.name}",
+                    "-C",
+                    "/data",
+                ]
+            ).code
+            == 0
+        ):
             n += 1
     return f"restored {n} of {len(tgz)}"
 
@@ -1423,9 +1719,15 @@ def step_docker_volumes(ctx):
 # Step: VS Code
 # ---------------------------------------------------------------------------
 def step_vscode(ctx):
-    variants = [("code", ".config/Code/User"), ("code-insiders", ".config/Code - Insiders/User"),
-                ("codium", ".config/VSCodium/User"), ("code-oss", ".config/Code - OSS/User")]
-    cli, user_dir = next(((c, d) for c, d in variants if ctx.tool(c)), ("code", ".config/Code/User"))
+    variants = [
+        ("code", ".config/Code/User"),
+        ("code-insiders", ".config/Code - Insiders/User"),
+        ("codium", ".config/VSCodium/User"),
+        ("code-oss", ".config/Code - OSS/User"),
+    ]
+    cli, user_dir = next(
+        ((c, d) for c, d in variants if ctx.tool(c)), ("code", ".config/Code/User")
+    )
     user = ctx.sys.home / user_dir
     res = []
     for f in ("settings.json", "keybindings.json", "mcp.json", "tasks.json"):
@@ -1437,11 +1739,25 @@ def step_vscode(ctx):
     if not ctx.tool(cli):
         return "; ".join(res) + "; extensions waiting on VS Code (the packages step installs it)"
     want_file = ctx.settings / "vscode" / "extensions.txt"
-    want = [l.strip() for l in want_file.read_text(encoding="utf-8-sig").splitlines()] if want_file.exists() else []
+    want = (
+        [line.strip() for line in want_file.read_text(encoding="utf-8-sig").splitlines()]
+        if want_file.exists()
+        else []
+    )
     want = [w for w in want if w and ctx.planned("vscode-extensions", w)]
     # VS Code refuses to run as root without its own data folder (only matters in containers).
-    extra = ["--no-sandbox", "--user-data-dir", str(ctx.sys.home / ".vscode-root")] if ctx.sys.is_root else []
-    listing = lambda: {l.strip().lower() for l in ctx.run.query([cli, *extra, "--list-extensions"]).out.splitlines()}
+    extra = (
+        ["--no-sandbox", "--user-data-dir", str(ctx.sys.home / ".vscode-root")]
+        if ctx.sys.is_root
+        else []
+    )
+
+    def listing():
+        return {
+            line.strip().lower()
+            for line in ctx.run.query([cli, *extra, "--list-extensions"]).out.splitlines()
+        }
+
     todo = [w for w in want if w.lower() not in listing()]
     if todo:
         # One call installs them all and carries on past any that fail.
@@ -1454,8 +1770,13 @@ def step_vscode(ctx):
         for line in out.out.strip().splitlines()[-5:]:
             warn(f"code: {line}")
     if failed:
-        ctx.todo(f"VS Code: these extensions didn't install (some are Windows-only): {', '.join(failed)}")
-    return "; ".join(res) + f"; {sn} snippet(s), {pr} prompt(s); {len(todo) - len(failed)} extension(s) installed"
+        ctx.todo(
+            f"VS Code: these extensions didn't install (some are Windows-only): {', '.join(failed)}"
+        )
+    return (
+        "; ".join(res)
+        + f"; {sn} snippet(s), {pr} prompt(s); {len(todo) - len(failed)} extension(s) installed"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1474,12 +1795,16 @@ def copy_or_park(ctx, rel, dst):
     if looks_windows(data) and Path(dst).suffix.lower() in (".md", ".txt"):
         # Instructions are prose: a mention of a Windows path doesn't break anything, so copy and flag it.
         r = copy_config(ctx, rel, dst)
-        ctx.todo(f"{rel} mentions Windows paths or programs; review {dst} for anything that only applied on Windows.")
+        ctx.todo(
+            f"{rel} mentions Windows paths or programs; review {dst} for anything that only applied on Windows."
+        )
         return r
     if looks_windows(data):
         parked = Path(dst).with_name(Path(dst).stem + ".windows" + Path(dst).suffix)
         r = copy_config(ctx, rel, parked)
-        ctx.todo(f"{rel} refers to Windows paths or programs; it was saved as {parked} for you to merge by hand.")
+        ctx.todo(
+            f"{rel} refers to Windows paths or programs; it was saved as {parked} for you to merge by hand."
+        )
         return f"saved as {parked.name} (Windows paths)" if r != "skipped by plan" else r
     return copy_config(ctx, rel, dst)
 
@@ -1500,7 +1825,9 @@ def step_claude(ctx):
         n += k
         skipped += [f"{d}/{x}" for x in s]
     if skipped:
-        ctx.todo(f"Claude Code: Windows scripts not copied ({', '.join(skipped)}); rewrite any hooks that used them.")
+        ctx.todo(
+            f"Claude Code: Windows scripts not copied ({', '.join(skipped)}); rewrite any hooks that used them."
+        )
     # Memory folders are named after the project path; map the Windows dev root to the Linux one.
     win = claude_dir_name(ctx.win_dev_root)
     lin = claude_dir_name(ctx.dev_root)
@@ -1510,22 +1837,55 @@ def step_claude(ctx):
         for proj in sorted(p for p in mem_src.iterdir() if p.is_dir()):
             name = proj.name
             if name == win or name.startswith(win + "-"):
-                name = lin + name[len(win):]
-            k, _ = copy_dir(ctx, f"claude/memory/{proj.name}", c / "projects" / name / "memory", skip_windows=False)
+                name = lin + name[len(win) :]
+            k, _ = copy_dir(
+                ctx,
+                f"claude/memory/{proj.name}",
+                c / "projects" / name / "memory",
+                skip_windows=False,
+            )
             mem += k
     mcp = load_json(src / "mcp-servers.json", {}) or {}
     added = 0
     if mcp.get("user") and ctx.tool("claude"):
         existing = ctx.run.query(["claude", "mcp", "list"]).out
         for name, cfg in mcp["user"].items():
-            if name in existing or not cfg.get("url") or cfg.get("headers") or cfg.get("env") or not ctx.planned("mcp", name):
+            if (
+                name in existing
+                or not cfg.get("url")
+                or cfg.get("headers")
+                or cfg.get("env")
+                or not ctx.planned("mcp", name)
+            ):
                 continue
-            if ctx.run.run(["claude", "mcp", "add", "--transport", cfg.get("type", "http"), name, cfg["url"], "--scope", "user"]).code == 0:
+            if (
+                ctx.run.run(
+                    [
+                        "claude",
+                        "mcp",
+                        "add",
+                        "--transport",
+                        cfg.get("type", "http"),
+                        name,
+                        cfg["url"],
+                        "--scope",
+                        "user",
+                    ]
+                ).code
+                == 0
+            ):
                 added += 1
     elif mcp.get("user"):
-        ctx.todo("Claude Code: install it (the packages step does), then rerun --steps claude to add your MCP servers.")
-    ctx.todo("Claude Code: sign in, and reinstall skills (settings/claude/skills.md) and plugins (settings/claude/plugins).")
-    return "; ".join(res) + f"; {n} agent/command/theme/hook file(s); {mem} memory file(s); {added} MCP server(s) added"
+        ctx.todo(
+            "Claude Code: install it (the packages step does), then rerun --steps claude to add your MCP servers."
+        )
+    ctx.todo(
+        "Claude Code: sign in, and reinstall skills (settings/claude/skills.md) and plugins (settings/claude/plugins)."
+    )
+    return (
+        "; ".join(res)
+        + f"; {n} agent/command/theme/hook file(s); {mem} memory file(s); {added} MCP server(s) added"
+    )
 
 
 def step_codex(ctx):
@@ -1538,17 +1898,27 @@ def step_codex(ctx):
         if f == "skills.md":
             continue
         if Path(f).suffix.lower() in (".ps1", ".cmd", ".bat"):
-            ctx.todo(f"Codex: {f} is a Windows script and wasn't copied; recreate it for Linux if your config uses it.")
+            ctx.todo(
+                f"Codex: {f} is a Windows script and wasn't copied; recreate it for Linux if your config uses it."
+            )
             continue
         res.append(f"{f} {copy_or_park(ctx, f'codex/{f}', c / f)}")
     n, _ = copy_dir(ctx, "codex/rules", c / "rules")
-    ctx.todo("Codex: sign in (auth.json wasn't exported) and reinstall skills listed in settings/codex/skills.md.")
+    ctx.todo(
+        "Codex: sign in (auth.json wasn't exported) and reinstall skills listed in settings/codex/skills.md."
+    )
     return "; ".join(res) + f"; {n} rule file(s)"
 
 
 STEP_FUNCS = {
-    "packages": step_packages, "dev-packages": step_dev_packages, "git-config": step_git_config, "repos": step_repos,
-    "dev-extras": step_dev_extras, "vscode": step_vscode, "claude": step_claude, "codex": step_codex,
+    "packages": step_packages,
+    "dev-packages": step_dev_packages,
+    "git-config": step_git_config,
+    "repos": step_repos,
+    "dev-extras": step_dev_extras,
+    "vscode": step_vscode,
+    "claude": step_claude,
+    "codex": step_codex,
     "docker-volumes": step_docker_volumes,
 }
 
@@ -1558,22 +1928,36 @@ STEP_FUNCS = {
 # ---------------------------------------------------------------------------
 def write_report(ctx, path):
     r = ctx.report
-    lines = [f"# Linux restore report", "", f"{time.strftime('%Y-%m-%d %H:%M')} on {ctx.sys.describe()}{' (dry run)' if ctx.dry else ''}.", ""]
+    lines = [
+        "# Linux restore report",
+        "",
+        f"{time.strftime('%Y-%m-%d %H:%M')} on {ctx.sys.describe()}{' (dry run)' if ctx.dry else ''}.",
+        "",
+    ]
 
     def section(title, items):
         if items:
             lines.extend([f"## {title}", ""] + [f"- {i}" for i in items] + [""])
+
     section("Installed" if not ctx.dry else "Would install", r["installed"])
     section("Already installed", r["present"])
     section("Failed", [f"{n}: {why}" for n, why in r["failed"]])
-    section("No Linux version", [f"{n}: {why}" + (f" Alternatives: {', '.join(alts)}." if alts else "") for n, why, alts in r["none"]])
+    section(
+        "No Linux version",
+        [
+            f"{n}: {why}" + (f" Alternatives: {', '.join(alts)}." if alts else "")
+            for n, why, alts in r["none"]
+        ],
+    )
     section("Not in the catalog (add them to catalog/linux-packages.json)", r["unmapped"])
     section("Skipped by your plan or config", r["planned"])
     section("Notes", r["notes"])
     section("Still to do by hand", ctx.manual)
     if r["windows_only"]:
         lines += ["## Windows-only (nothing to install)", "", ", ".join(r["windows_only"]), ""]
-    lines += ["## Steps", "", "| Step | Result |", "| --- | --- |"] + [f"| {s} | {res} |" for s, res in ctx.results]
+    lines += ["## Steps", "", "| Step | Result |", "| --- | --- |"] + [
+        f"| {s} | {res} |" for s, res in ctx.results
+    ]
     try:
         Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         return True
@@ -1583,20 +1967,49 @@ def write_report(ctx, path):
 
 def main():
     default_data = os.environ.get("HOPOVER_DATA") or str(TOOL / "data")
-    ap = argparse.ArgumentParser(description="Set up Linux from a Windows PC's exports (see the tool's README).")
-    ap.add_argument("--data", default=default_data, help="data folder (default: $HOPOVER_DATA, else <tool>/data)")
-    ap.add_argument("--extras", help="folder holding the extras archive (default: look for <migrationRoot name>/extras on mounted drives)")
-    ap.add_argument("--dev-root", help="where to clone repos (default: config linux.devRoot, ~/dev)")
+    ap = argparse.ArgumentParser(
+        description="Set up Linux from a Windows PC's exports (see the tool's README)."
+    )
+    ap.add_argument(
+        "--data",
+        default=default_data,
+        help="data folder (default: $HOPOVER_DATA, else <tool>/data)",
+    )
+    ap.add_argument(
+        "--extras",
+        help="folder holding the extras archive (default: look for <migrationRoot name>/extras on mounted drives)",
+    )
+    ap.add_argument(
+        "--dev-root", help="where to clone repos (default: config linux.devRoot, ~/dev)"
+    )
     ap.add_argument("--steps", help="comma-separated steps to run (default: all; see --list)")
-    ap.add_argument("--only", help="comma-separated app ids (winget ids or catalog keys) to limit the packages step to")
+    ap.add_argument(
+        "--only",
+        help="comma-separated app ids (winget ids or catalog keys) to limit the packages step to",
+    )
     ap.add_argument("--dry-run", action="store_true", help="show what would happen; change nothing")
-    ap.add_argument("--refresh", action="store_true", help="with --dry-run: refresh package metadata (needs sudo) so package names are checked")
-    ap.add_argument("--prefer", help="install source order, e.g. vendor,distro,portable,flatpak (default: config linux.prefer)")
+    ap.add_argument(
+        "--refresh",
+        action="store_true",
+        help="with --dry-run: refresh package metadata (needs sudo) so package names are checked",
+    )
+    ap.add_argument(
+        "--prefer",
+        help="install source order, e.g. vendor,distro,portable,flatpak (default: config linux.prefer)",
+    )
     ap.add_argument("--no-flatpak", action="store_true", help="never use Flathub")
-    ap.add_argument("--aur", choices=["auto", "never"], help="use an AUR helper (yay/paru) if one is installed (default: config linux.aur)")
+    ap.add_argument(
+        "--aur",
+        choices=["auto", "never"],
+        help="use an AUR helper (yay/paru) if one is installed (default: config linux.aur)",
+    )
     ap.add_argument("--no-overwrite", action="store_true", help="leave existing config files alone")
-    ap.add_argument("--ignore-plan", action="store_true", help="restore everything, ignoring restore-plan.json")
-    ap.add_argument("--report", help="where to write the report (default: ~/hopover-linux-<timestamp>.md)")
+    ap.add_argument(
+        "--ignore-plan", action="store_true", help="restore everything, ignoring restore-plan.json"
+    )
+    ap.add_argument(
+        "--report", help="where to write the report (default: ~/hopover-linux-<timestamp>.md)"
+    )
     ap.add_argument("--list", action="store_true", help="list the steps and exit")
     args = ap.parse_args()
 
@@ -1605,12 +2018,18 @@ def main():
             print(f"{name:16} {text}")
         return 0
     if os.geteuid() == 0 and os.environ.get("SUDO_USER"):
-        print("Run this as your normal user (not with sudo); it asks for sudo when it needs it.", file=sys.stderr)
+        print(
+            "Run this as your normal user (not with sudo); it asks for sudo when it needs it.",
+            file=sys.stderr,
+        )
         return 1
 
     ctx = Ctx(args)
     if not (ctx.data / "settings").is_dir() and not (ctx.data / "winget-packages.json").exists():
-        print(f"No exports in {ctx.data}. Pass --data <your data folder> (the folder with settings/ and winget-packages.json).", file=sys.stderr)
+        print(
+            f"No exports in {ctx.data}. Pass --data <your data folder> (the folder with settings/ and winget-packages.json).",
+            file=sys.stderr,
+        )
         return 1
     if not ctx.sys.family:
         print("This distro isn't supported: no apt-get, dnf or pacman found.", file=sys.stderr)
@@ -1620,9 +2039,13 @@ def main():
     info(f"system: {ctx.sys.describe()}")
     info(f"data:   {ctx.data}")
     info(f"plan:   {ctx.plan_file or 'none (restoring everything)'}")
-    info(f"order:  {' > '.join(ctx.linux['prefer'])}; AUR {ctx.linux.get('aur')}; Flathub {'on' if ctx.linux.get('flatpak', True) else 'off'}")
+    info(
+        f"order:  {' > '.join(ctx.linux['prefer'])}; AUR {ctx.linux.get('aur')}; Flathub {'on' if ctx.linux.get('flatpak', True) else 'off'}"
+    )
     if ctx.dry and not args.refresh:
-        info("package names aren't checked against the repos in a dry run (add --refresh to check them; needs sudo)")
+        info(
+            "package names aren't checked against the repos in a dry run (add --refresh to check them; needs sudo)"
+        )
     if not ctx.sys.is_root and not ctx.dry and shutil.which("sudo"):
         subprocess.run(["sudo", "-v"])
 

@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Every job only reads the repository (the changelog job reads tags), so the token gets nothing
+# more. Releases, which push tags, run in release.yml with their own permissions.
+permissions:
+  contents: read
+
+jobs:
+  # The Windows scripts must run in Windows PowerShell 5.1 (what a fresh install has) and in
+  # PowerShell 7, so every check runs in both: parse, PSScriptAnalyzer and Pester, over the
+  # tracked files only (tests/Invoke-PowerShellChecks.ps1). The PowerShell Gallery has no
+  # Dependabot ecosystem: the module versions here move by hand, with the script's.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install PSScriptAnalyzer and Pester (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
+          Install-Module Pester -RequiredVersion 6.2.0 -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+
+      - name: Install PSScriptAnalyzer and Pester (PowerShell 7)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
+          Install-Module Pester -RequiredVersion 6.2.0 -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+
+      - name: Parse, analyze and test (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./tests/Invoke-PowerShellChecks.ps1
+
+      - name: Parse, analyze and test (PowerShell 7)
+        shell: pwsh
+        run: ./tests/Invoke-PowerShellChecks.ps1
+
+  # The Linux restore: restore_linux.py (standard library only, on the distro's python3 down to
+  # 3.8) and its bash bootstrap. ruff and shellcheck are pinned in uv.lock; the unit tests run on
+  # .python-version's 3.9, the oldest Python uv installs, and ruff's py38 target rejects newer
+  # syntax.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No python-version input: uv reads .python-version here and locally.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run shellcheck linux/restore-linux.sh
+      - run: bash -n linux/restore-linux.sh
+      - run: uv run python -m unittest discover -s linux/tests -v
+
+  # The pull request's changelog fragment parses, and it leaves CHANGELOG.md's sections and other
+  # merges' fragments alone (`Scheme: stamp-on-tag`, docs/agents/releases.md). It never requires a
+  # fragment: a merge with none, Dependabot's included, gets a section from its PR title.
+  # A required check, so it always reports: the push exemption is inside the step, not a job `if`.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history, to compare the branch with main
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Changelog fragment is valid
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Checked on the pull request; on main the release workflow stamps the changelog."
+            exit 0
+          fi
+          node scripts/check-changelog.mjs
+
+  # Agent config and docs. The scripts need no dependencies, so nothing is installed.
+  agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # .claude/skills/ mirrors .agents/skills/, and the shared AGENTS.md blocks are current.
+      - name: Generated agent config is in sync
+        run: node scripts/sync-agents.mjs --check
+
+      - name: Installed skills match the lock
+        run: node scripts/check-skills.mjs
+
+      # Skill and agent sources are read from their mirrored copies too: a bare $0-$9 in a
+      # SKILL.md or a relative link that breaks there fails here.
+      - name: Skill and agent sources are tool-neutral
+        run: node scripts/lint-agent-neutrality.mjs
+
+      # Local links and anchors resolve, and the doc map lists every document.
+      - name: Docs links and doc map
+        run: node scripts/check-docs.mjs
+
+      - name: Script tests
+        run: node --test "scripts/*.test.mjs"

@@ -24,7 +24,7 @@ For the full sequence (days before, wipe day, install, new PC) follow [CHECKLIST
 
 ## Getting started
 
-1. Clone this repo, e.g. to `C:\dev\hopover`.
+1. Clone this repo, e.g. to `C:\dev\hopover`, or download `hopover-<version>.zip` from the latest [release](https://github.com/jwh3times/hopover/releases/latest) and unzip it there (the zip leaves out the development files).
 2. Create your data folder and config:
 
    ```powershell
@@ -339,6 +339,9 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | `linux\` | `restore-linux.sh`, `restore_linux.py`, and `tests\` |
 | `config.example.json` | Starting point for `data\config.json` |
 | `CHECKLIST.md` | The step-by-step wipe and reinstall checklist |
-| `AGENTS.md` | Notes for coding agents working on this repo |
+| `tests\` | Pester tests for the Windows scripts, and `Invoke-PowerShellChecks.ps1` (parse, lint, test) |
+| `pyproject.toml`, `uv.lock`, `PSScriptAnalyzerSettings.psd1` | Pinned lint and format tools for development (the tool itself needs none) |
+| `CHANGELOG.md`, `changelog.d\`, `VERSION` | Release notes, stamped when each change merges, and the release line |
+| `AGENTS.md`, `CLAUDE.md`, `docs\`, `scripts\`, `.agents\`, `.claude\` | Guidance, settings, decisions and scripts for coding agents working on this repo |
 | `LICENSE` | AGPL-3.0 |
 | `data\` | Your data folder, usually its own private repo (not part of this repo) |

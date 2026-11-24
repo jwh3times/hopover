@@ -1,0 +1,29 @@
+# Development tools only. linux/restore_linux.py uses the standard library and installs nothing,
+# so there is no [project] table: this file pins the linters CI and local checks run
+# (`uv sync`, then `uv run ...`). The release line lives in VERSION.
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+    "shellcheck-py>=0.11",
+]
+
+[tool.ruff]
+line-length = 100
+# restore_linux.py runs on the distro's own python3, as old as 3.8; ruff rejects newer syntax.
+target-version = "py38"
+# Python only: ruff also formats Markdown code blocks, which would rewrite the shared AGENTS.md
+# blocks sync-agents writes. data/ is the private companion; .agents/ and .claude/ hold installed
+# skills, never edited here.
+include = ["*.py", "*.pyi", "**/pyproject.toml"]
+extend-exclude = ["data", ".agents", ".claude"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+# `ruff format` keeps code within line-length; what it leaves longer is a string or a comment.
+ignore = [
+    "E501",
+    # The resolver's checks are guard chains, one condition per `if`; folding them into a single
+    # boolean expression reads worse.
+    "SIM102",
+    "SIM103",
+]

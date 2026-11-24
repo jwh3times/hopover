@@ -1,4 +1,6 @@
-# Agent notes for Hopover
+# AGENTS.md
+
+Guidance for every coding agent in this repository (Claude Code reads it through `CLAUDE.md`).
 
 Hopover captures a Windows PC's apps, settings and data and restores them onto a fresh Windows or Linux install. Read `README.md` for what each script does.
 
@@ -8,6 +10,8 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 - `ui\index.html` is the page `Show-RestorePlan.ps1` serves.
 - `catalog\` holds data, not code: `app-data.json` (app-data folders to back up), `linux-packages.json` (Windows app to Linux install methods), `linux-repos.json` (vendor repos, installer scripts, prerequisites).
 - `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.8+, standard library only), plus `tests\`.
+- `tests\` holds the Pester tests for the Windows scripts and `Invoke-PowerShellChecks.ps1`.
+- `scripts\` holds the agent and release scripts from `jwh3times/skills` (see [Agent skills](#agent-skills)); they need Node and nothing else.
 
 ## The private companion at `data\`
 
@@ -16,25 +20,50 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 - Never commit anything from `data\` to this repo, and never copy personal values (names, paths, drive letters, repo lists, hostnames) into the tool's code, catalogs or docs. Use `config.json` settings or placeholders instead.
 - When the companion is present, run its git commands from inside `data\`.
 - Scripts find the data folder from `-DataDir`, then `$env:HOPOVER_DATA`, then `data\`.
+- Linters and tests read only tracked files (`git ls-files`, ruff's `extend-exclude`), so they never open `data\`.
 
 ## Rules for changes
 
 - Windows scripts must run in Windows PowerShell 5.1 (a fresh install has nothing newer) and PowerShell 7. Watch for: `$PSScriptRoot` is empty in `param()` defaults; `ConvertFrom-Json` returns a top-level array as one object; variable names are case-insensitive (`$s` is `$S`); `powershell -File` passes `a,b` as one string (split list parameters with `Split-List`). Every script uses `[CmdletBinding(PositionalBinding = $false)]`.
+- `restore_linux.py` runs on the distro's own `python3`, as old as 3.8: ruff targets `py38` and rejects newer syntax. CI's unit tests run on 3.9, the oldest Python uv still installs.
 - Keep `*.sh` and `*.py` LF-only (`.gitattributes` enforces it).
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
+- A PSScriptAnalyzer rule is excluded in `PSScriptAnalyzerSettings.psd1` only with the reason beside it; a ruff rule likewise in `pyproject.toml`.
 
-## Checking a change
+## Commands
+
+The fast checks, which CI runs on every pull request:
+
+```bash
+powershell -NoProfile -File tests/Invoke-PowerShellChecks.ps1   # parse, PSScriptAnalyzer, Pester in 5.1
+pwsh -NoProfile -File tests/Invoke-PowerShellChecks.ps1         # the same in PowerShell 7
+uv sync --frozen                                                # ruff and shellcheck, pinned in uv.lock
+uv run ruff check . && uv run ruff format --check .             # Python lint and format
+uv run shellcheck linux/restore-linux.sh && bash -n linux/restore-linux.sh
+uv run python -m unittest discover -s linux/tests               # restore_linux.py unit tests
+node scripts/sync-agents.mjs --check     # agent config is in sync
+node scripts/check-skills.mjs            # installed skills match skills-lock.json
+node scripts/lint-agent-neutrality.mjs   # skill and agent sources read correctly from both trees
+node scripts/check-docs.mjs              # doc links resolve and docs/agents/docs.md maps every doc
+node scripts/check-changelog.mjs         # the branch's changelog.d/ fragment is valid
+node --test "scripts/*.test.mjs"         # tests for the scripts above
+```
+
+Release helpers:
+
+```bash
+node scripts/next-version.mjs                # the version the next merge to main will mint
+node scripts/stamp-changelog.mjs --dry-run   # the sections the release workflow would stamp
+```
+
+Slower checks, run by hand when a change touches what they cover:
 
 ```powershell
-# parse every script in both PowerShell versions
-powershell -NoProfile -Command "Get-ChildItem *.ps1,lib\*.ps1 | % { $e=$null; [void][Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$null,[ref]$e); if ($e) { $_.Name; $e } }"
-pwsh -NoProfile -Command "Get-ChildItem *.ps1,lib\*.ps1 | % { $e=$null; [void][Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$null,[ref]$e); if ($e) { $_.Name; $e } }"
-
 # Windows restore without changing anything
 .\Restore.ps1 -DryRun
 
-# Linux catalog: structure, vendor URLs, GitHub asset patterns
+# Linux catalog: structure, vendor URLs, GitHub asset patterns (reaches the network)
 powershell -File linux\tests\Test-LinuxCatalog.ps1
 
 # Linux restore in Docker (dry run on six distros; -Install -Only <ids> really installs)
@@ -42,3 +71,96 @@ powershell -File linux\tests\Test-LinuxRestore.ps1
 ```
 
 `Test-LinuxRestore.ps1` needs Docker Desktop and a data folder; its containers run as root, so AUR, Flatpak and systemd steps only print what they'd do there.
+
+Once a PR is open, read [docs/agents/merging.md](docs/agents/merging.md).
+
+## Development flow
+
+<!-- shared:development-flow -->
+
+The flow skills are this repository's binding process for changing code. Read
+`.agents/skills/open-pr/settings/dev-flow.md` (the routing, exemptions and issue linking) and
+`docs/agents/dev-flow.md` (what this repository adds) before the first edit of a change, and whenever
+no ready issue exists. `/ask-matt` maps the flow itself.
+
+- **The gate.** Every code edit starts from a ready issue: an open `ready-for-agent` issue whose body
+  is a `/to-spec` spec or a `/to-tickets` ticket or that carries a `/triage` brief, or a `bug` issue
+  worked through `/diagnosing-bugs`, which needs the number and no spec. With none, stop before the
+  first edit and route the user. Reading code, running tests and answering questions need no issue.
+- **Private work.** A ready issue in the private tracker counts. Its number stays out of the branch,
+  the PR, commits and public issues, and it is closed by hand after the merge.
+- **The human starts every phase.** `/wayfinder`, `/grill-with-docs`, `/to-spec`, `/to-tickets`,
+  `/implement` and `/triage` stay user-invoked. At a phase boundary, name the next command, say in
+  one line why, and wait. Inside a phase, use `/tdd`, `/code-review`, `/diagnosing-bugs`,
+  `/domain-modeling`, `/codebase-design`, `/prototype` and `/research` whenever they fit.
+- **Exempt from the gate:** dependency bumps, changes touching only docs and agent config, release
+  prep, and an explicit user waiver recorded in the PR body as `Flow waived by the user: <reason>`.
+- **Linking.** Branches are `<type>/<issue#>-<slug>`; the PR body opens with `Closes #N` or
+  `Part of #N`.
+- **The flow ends at `/open-pr`.** `/implement` stops at a commit; `/open-pr` refreshes the docs,
+  writes the changelog and the PR body, and opens the PR (Claude Code's built-in `/ship` is a
+  different command, outside this flow). When the user says to merge it, `/land` merges it
+  and confirms its release. `/dependabot` reviews the open Dependabot PRs and hands the ones the
+  user names to `/land`; nothing merges a Dependabot PR on its own. `/ask-matt` also routes to
+  `/pr`, `/retro` and `/implement-spec`, which are not installed here.
+- **Tests are proven, reds are read.** Before `/implement` commits a change that adds or changes
+  tests, and in `/code-review`, run `/test-prover`: in a scratch worktree it reverts the fix and
+  breaks its guards, and every new test must go red. `/open-pr` runs it too. `/land` and
+  `/dependabot` read a red check with `/ci-triage`, which never re-runs anything.
+  `/records-audit` checks the board, the trackers, the follow-up wiki and the changelog against
+  each other; run it weekly, and `/what-next` says when it is due.
+- **`/handoff` is the shared skill.** It parks the session for another machine or harness, closes it
+  out with `/end-session`, and `/lets-go` resumes it. It does not write the portable file `/ask-matt`
+  describes, so a `/prototype` detour stays in the session or uses a branch.
+- **A wizard is not the record.** A step only a human can take follows the `## Procedure` in
+  `.agents/skills/open-pr/settings/human-follow-up.md`, whose instructions stand without the script.
+- **Research goes where it is safe to keep.** `/research` findings that would expose private material
+  go to the private companion, where there is one, never to an ignored folder with no repository
+  behind it. Details of an unpublished vulnerability are a draft advisory, never a research file.
+
+<!-- /shared:development-flow -->
+
+## Agent skills
+
+Skills are authored in `.agents/skills/` (Codex reads it directly); `.claude/skills/` is a
+generated mirror for Claude Code. Never edit the mirror: run `node scripts/sync-agents.mjs`.
+
+### Shared skills
+
+<!-- shared:shared-skills -->
+
+`end-session`, `handoff`, `lets-go`, `open-pr`, `land`, `dependabot`, `docs-updater`, `what-next`,
+`test-prover`, `ci-triage` and `records-audit` install from `jwh3times/skills`, and are never
+edited here: reinstalling overwrites a local edit.
+A fix goes upstream, and what they need to know about this repository goes in the settings files
+under `docs/agents/`, which each skill proposes on first run.
+
+The other shared skills come from one `mattpocock/skills` snapshot (v1.3.2, pinned by commit), the
+same in every repository, and are never edited here either: what they need to know goes in this
+file or `docs/agents/`. Moving to a newer snapshot is a change in `jwh3times/skills`. Keep
+`.agents/skills/` out of every formatter: `scripts/check-skills.mjs` fails when an installed copy
+differs from `skills-lock.json`, or the lock from these commands.
+
+Re-running the install is the update; never run `npx skills update`, which leaves `.claude/skills/`
+linked to its source instead of copied:
+
+```bash
+npx skills add jwh3times/skills -s end-session -s handoff -s lets-go -s open-pr -s land -s dependabot -s docs-updater -s what-next -s test-prover -s ci-triage -s records-audit -a codex --copy -y
+npx skills add mattpocock/skills#d1478fcb140db0b93c0c8df17bcfd311844749d0 \
+  -s ask-matt -s code-review -s codebase-design -s diagnosing-bugs -s domain-modeling -s grill-me \
+  -s grill-with-docs -s grilling -s implement -s improve-codebase-architecture -s prototype \
+  -s research -s setup-matt-pocock-skills -s tdd -s teach -s to-questionnaire -s to-spec \
+  -s to-tickets -s triage -s wait-what -s wayfinder -s wizard -s writing-for-agents \
+  -a codex --copy -y
+node scripts/sync-agents.mjs
+```
+
+`scripts/sync-agents.mjs`, `lint-agent-neutrality.mjs`, `check-docs.mjs`, `check-skills.mjs`,
+`guard.mjs`, and `sync-main.mjs`, `next-version.mjs`, `check-changelog.mjs` and
+`stamp-changelog.mjs` where this repository carries them, are canonical in `jwh3times/skills` with
+their tests: fix them there, then copy them here.
+`sync-agents.mjs` also writes the marked blocks in this file: change them in `jwh3times/skills`, not
+here. It registers `guard.mjs` in `.claude/settings.json`, which stops the commands and edits these
+rules forbid; this repository's own additions go in `docs/agents/guard.md`.
+
+<!-- /shared:shared-skills -->
