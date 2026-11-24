@@ -9,8 +9,9 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-# restore_linux.py runs on the distro's own python3, as old as 3.8; ruff rejects newer syntax.
-target-version = "py38"
+# restore_linux.py runs on the distro's own python3, as old as 3.10; ruff rejects newer syntax,
+# and CI's linux job runs the unit tests on 3.10 too.
+target-version = "py310"
 # Python only: ruff also formats Markdown code blocks, which would rewrite the shared AGENTS.md
 # blocks sync-agents writes. data/ is the private companion; .agents/ and .claude/ hold installed
 # skills, never edited here.

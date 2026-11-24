@@ -7,7 +7,7 @@ and in the scheduled review. These facts apply to this repository only.
 
 Hopover itself has no runtime dependencies: the Windows scripts are Windows PowerShell 5.1 and
 PowerShell 7 with built-in modules only, and `linux/restore_linux.py` uses Python's standard library
-on whatever `python3` the distro ships (3.8 and up). Dependabot updates only the development tools
+on whatever `python3` the distro ships (3.10 and up). Dependabot updates only the development tools
 and the workflows' actions.
 
 - **uv, `/`:** `pyproject.toml` and `uv.lock` pin the dev group: `ruff` (lint and format) and
@@ -23,7 +23,8 @@ install step, and move by hand, together.
 `.github/workflows/ci.yml` runs four jobs, all required on `main`: `windows` (installs the two
 modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and in PowerShell 7),
 `linux` (`uv sync --frozen`, `ruff check`, `ruff format --check`, shellcheck, `bash -n` and
-`python -m unittest discover -s linux/tests` on Python 3.15 from `.python-version`), `changelog`
+`python -m unittest discover -s linux/tests` on Python 3.15 from `.python-version` and again on
+3.10, the floor), `changelog`
 (`node scripts/check-changelog.mjs`) and `agents` (the repository scripts on the Node in `.nvmrc`).
 `release.yml` runs on a push to `main` and stamps, tags and releases each merge.
 
@@ -34,16 +35,16 @@ modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and 
 
 ## Resolution
 
-- **Toolchain.** Node from `.nvmrc` (22), Python from `.python-version` (3.15, the newest; ruff's
-  `target-version = "py38"` covers `restore_linux.py`'s 3.8 floor). If `uv python find 3.15`
-  fails, run `uv python install 3.15`.
+- **Toolchain.** Node from `.nvmrc` (22), Python from `.python-version` (3.15, the newest), and
+  3.10 for the floor's unit-test run (ruff's `target-version = "py310"` covers its syntax). If
+  `uv python find 3.15` or `3.10` fails, run `uv python install` with that version.
 - **uv** (`pyproject.toml`, `uv.lock`), from the repository root: `uv lock --check`, then
   `uv sync --frozen`.
 
 ## Where to look
 
 - The `[tool.ruff]` sections of `pyproject.toml` (`select = ["E", "F", "I", "B", "UP", "SIM"]`,
-  `target-version = "py38"`, the ignores with their reasons).
+  `target-version = "py310"`, the ignores with their reasons).
 - `linux/restore_linux.py`, `linux/tests/` and `linux/restore-linux.sh`.
 - The `with:` inputs in `ci.yml` and `release.yml`.
 

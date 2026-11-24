@@ -10,7 +10,7 @@
 # Run it as your normal user, not with sudo. Works on apt (Debian, Ubuntu,
 # Linux Mint, Pop!_OS...), dnf (Fedora) and pacman (Arch, CachyOS, EndeavourOS,
 # Manjaro) systems. Note: if python3 or curl is missing, this installs them
-# first, even with --dry-run.
+# first, even with --dry-run. It stops if python3 is older than 3.10.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,6 +40,15 @@ if [ "${#missing[@]}" -gt 0 ]; then
         echo "No apt-get, dnf or pacman found. Install python3 and curl yourself, then rerun." >&2
         exit 1
     fi
+fi
+
+# restore_linux.py needs Python 3.10 or newer. Checked here, in bash, because an older python3
+# may fail to parse the script before it could say so itself.
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
+    found="$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)"
+    echo "restore_linux.py needs Python 3.10 or newer; this system's python3 is ${found}." >&2
+    echo "Upgrade the distro, or install a newer python3, then rerun." >&2
+    exit 1
 fi
 
 exec python3 "$here/restore_linux.py" "$@"

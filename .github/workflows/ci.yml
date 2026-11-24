@@ -41,8 +41,10 @@ jobs:
         run: ./tests/Invoke-PowerShellChecks.ps1
 
   # The Linux restore: restore_linux.py (standard library only, on the distro's python3 down to
-  # 3.8) and its bash bootstrap. ruff and shellcheck are pinned in uv.lock; the unit tests run on
-  # .python-version's 3.15, the newest Python, and ruff's py38 target rejects syntax 3.8 lacks.
+  # 3.10) and its bash bootstrap. ruff and shellcheck are pinned in uv.lock. The unit tests run
+  # twice: on .python-version's 3.15, the newest Python, and on 3.10, the floor, in an isolated
+  # environment that needs nothing installed (the script and its tests use the standard library).
+  # ruff's py310 target rejects syntax 3.10 lacks.
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -55,6 +57,8 @@ jobs:
       - run: uv run shellcheck linux/restore-linux.sh
       - run: bash -n linux/restore-linux.sh
       - run: uv run python -m unittest discover -s linux/tests -v
+      - name: Unit tests on Python 3.10, the floor
+        run: uv run --isolated --no-project --python 3.10 python -m unittest discover -s linux/tests -v
 
   # The pull request's changelog fragment parses, and it leaves CHANGELOG.md's sections and other
   # merges' fragments alone (`Scheme: stamp-on-tag`, docs/agents/releases.md). It never requires a

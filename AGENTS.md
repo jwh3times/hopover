@@ -9,7 +9,7 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 - Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, config, helpers).
 - `ui\index.html` is the page `Show-RestorePlan.ps1` serves.
 - `catalog\` holds data, not code: `app-data.json` (app-data folders to back up), `linux-packages.json` (Windows app to Linux install methods), `linux-repos.json` (vendor repos, installer scripts, prerequisites).
-- `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.8+, standard library only), plus `tests\`.
+- `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.10+, standard library only), plus `tests\`.
 - `tests\` holds the Pester tests for the Windows scripts and `Invoke-PowerShellChecks.ps1`.
 - `scripts\` holds the agent and release scripts from `jwh3times/skills` (see [Agent skills](#agent-skills)); they need Node and nothing else.
 
@@ -25,7 +25,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 ## Rules for changes
 
 - Windows scripts must run in Windows PowerShell 5.1 (a fresh install has nothing newer) and PowerShell 7. Watch for: `$PSScriptRoot` is empty in `param()` defaults; `ConvertFrom-Json` returns a top-level array as one object; variable names are case-insensitive (`$s` is `$S`); `powershell -File` passes `a,b` as one string (split list parameters with `Split-List`). Every script uses `[CmdletBinding(PositionalBinding = $false)]`.
-- `restore_linux.py` runs on the distro's own `python3`, as old as 3.8: ruff targets `py38` and rejects newer syntax. CI's unit tests run on the newest Python, `.python-version`'s 3.15; nothing runs them on 3.8, so the py38 target is the floor's only guard.
+- `restore_linux.py` runs on the distro's own `python3`, as old as 3.10, and `restore-linux.sh` refuses an older one. Ruff targets `py310` and rejects newer syntax, and CI's unit tests run on both the floor (3.10) and the newest Python (`.python-version`'s 3.15). Moving the floor changes all four together: the guard in `restore-linux.sh`, ruff's `target-version`, the 3.10 step in `ci.yml`, and the docs that state it.
 - Keep `*.sh` and `*.py` LF-only (`.gitattributes` enforces it).
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
@@ -42,6 +42,7 @@ uv sync --frozen                                                # ruff and shell
 uv run ruff check . && uv run ruff format --check .             # Python lint and format
 uv run shellcheck linux/restore-linux.sh && bash -n linux/restore-linux.sh
 uv run python -m unittest discover -s linux/tests               # restore_linux.py unit tests
+uv run --isolated --no-project --python 3.10 python -m unittest discover -s linux/tests   # the same on the 3.10 floor
 node scripts/sync-agents.mjs --check     # agent config is in sync
 node scripts/check-skills.mjs            # installed skills match skills-lock.json
 node scripts/lint-agent-neutrality.mjs   # skill and agent sources read correctly from both trees
