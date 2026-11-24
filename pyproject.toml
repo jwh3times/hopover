@@ -11,7 +11,11 @@ dev = [
 line-length = 100
 # restore_linux.py runs on the distro's own python3, as old as 3.8; ruff rejects newer syntax.
 target-version = "py38"
-extend-exclude = ["data"]
+# Python only: ruff also formats Markdown code blocks, which would rewrite the shared AGENTS.md
+# blocks sync-agents writes. data/ is the private companion; .agents/ and .claude/ hold installed
+# skills, never edited here.
+include = ["*.py", "*.pyi", "**/pyproject.toml"]
+extend-exclude = ["data", ".agents", ".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
