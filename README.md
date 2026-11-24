@@ -322,6 +322,12 @@ Secrets (from your password manager), sign-ins, mail stores, video editor projec
 
 Rerun `Catalog-InstalledApps.ps1` and `Export-Settings.ps1` after installing apps or changing settings, then commit the data folder. `git diff` there shows what changed since the last snapshot. New apps and settings are restored by default; open `Show-RestorePlan.ps1` to untick any.
 
+## License
+
+Copyright (C) 2026 Jerry Holland
+
+Hopover is free software under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). You may use, change and share it, including commercially, as long as you keep this copyright notice and the license, and release anything you build from it, with its source, under the same license. That includes a modified version you let others use over a network.
+
 ## What's in the repo
 
 | Path | What |
@@ -334,4 +340,5 @@ Rerun `Catalog-InstalledApps.ps1` and `Export-Settings.ps1` after installing app
 | `config.example.json` | Starting point for `data\config.json` |
 | `CHECKLIST.md` | The step-by-step wipe and reinstall checklist |
 | `AGENTS.md` | Notes for coding agents working on this repo |
+| `LICENSE` | AGPL-3.0 |
 | `data\` | Your data folder, usually its own private repo (not part of this repo) |
