@@ -11,22 +11,28 @@ Describe 'Split-List' {
         Split-List @('winget, choco,,npm ') | Should -Be @('winget', 'choco', 'npm')
     }
 
-    It 'returns an empty array for nothing' {
-        @(Split-List @()).Count | Should -Be 0
+    It 'drops the empty string an unset list parameter passes' {
+        @(Split-List @('')).Count | Should -Be 0
     }
 }
 
 Describe 'Get-MigrationConfig' {
+    # Each test gets its own folder: $TestDrive is shared across a Describe block.
+    BeforeEach {
+        $dir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+    }
+
     It 'returns the defaults when config.json is absent' {
-        $cfg = Get-MigrationConfig $TestDrive
+        $cfg = Get-MigrationConfig $dir
         $cfg['_exists'] | Should -BeFalse
         $cfg['repoDepth'] | Should -Be 3
     }
 
     It 'merges nested sections one level deep and skips $schema and _comment keys' {
         $json = '{ "$schema": "x", "_comment": "y", "repoDepth": 5, "linux": { "aur": "never" } }'
-        Set-Content -LiteralPath (Join-Path $TestDrive 'config.json') -Value $json -Encoding UTF8
-        $cfg = Get-MigrationConfig $TestDrive
+        Set-Content -LiteralPath (Join-Path $dir 'config.json') -Value $json -Encoding UTF8
+        $cfg = Get-MigrationConfig $dir
         $cfg['_exists'] | Should -BeTrue
         $cfg['repoDepth'] | Should -Be 5
         $cfg['linux']['aur'] | Should -Be 'never'

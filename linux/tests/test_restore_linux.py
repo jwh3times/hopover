@@ -24,6 +24,10 @@ class PickTests(unittest.TestCase):
         spec = {"ubuntu": "a", "apt": "b", "default": "c"}
         self.assertEqual(restore_linux.pick(spec, UBUNTU), "a")
 
+    def test_id_key_wins_over_bare_id(self):
+        spec = {"id:ubuntu": "x", "ubuntu": "y"}
+        self.assertEqual(restore_linux.pick(spec, UBUNTU), "x")
+
     def test_falls_back_to_default(self):
         spec = {"apt": "b", "default": "c"}
         self.assertEqual(restore_linux.pick(spec, FEDORA), "c")

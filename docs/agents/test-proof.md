@@ -12,7 +12,11 @@ How `test-prover` runs one test on its own here. The suites and their CI jobs ar
 - Repo root: `tests/*.Tests.ps1`, Pester 6. One test, by its full name (the `Describe` and `It`
   names joined by a dot, `Split-List.returns an empty array for nothing`):
   `pwsh -NoProfile -Command 'Import-Module Pester -RequiredVersion 6.2.0; $r = Invoke-Pester -Configuration @{Run=@{Path="<file>"; PassThru=$true}; Filter=@{FullName="<name>"}; Output=@{Verbosity="Detailed"}}; "Pester ran {0} tests" -f ($r.PassedCount + $r.FailedCount); exit $r.FailedCount'`;
-  one file: the same with `FullName="*"`. The single quotes keep bash from expanding `$r`.
+  one file: the same with `FullName="*"`. The single quotes keep bash from expanding `$r`. The name
+  sits in a PowerShell double-quoted string, so a `"` or `$` in it is written as `*`
+  (`FullName` takes wildcards): a raw `"` breaks the command into a parse error that reads as red,
+  and a raw `$` expands to nothing and selects no test. Windows PowerShell 5.1 runs the same
+  command with `powershell` in place of `pwsh`.
   Count: `--count "Pester ran ([0-9]+) tests"`, the line the command prints, since Pester's own
   summary puts the passed and failed counts in separate numbers. Worktree: none.
 - Repo root: `scripts/*.test.mjs`, node's runner. One file: `node --test <file>`; one test:
