@@ -53,7 +53,7 @@ To keep the data somewhere else, pass `-DataDir <folder>` to any script, or set 
   ```
 
   From a PowerShell window, `.\<Script>.ps1` works too. **From bash** (Git Bash, or `!` in Claude Code), `./<Script>.ps1` fails with a syntax error because bash can't run PowerShell; use `powershell -ExecutionPolicy Bypass -File ./<Script>.ps1`. List options take comma-separated values, e.g. `-Steps winget,vscode`.
-- **Linux:** bash and an apt, dnf or pacman distro. `restore-linux.sh` installs `python3` and `curl` itself if they're missing.
+- **Linux:** bash and an apt, dnf or pacman distro with Python 3.10 or newer (Ubuntu 22.04, Debian 12, Fedora 35 and later all ship it). `restore-linux.sh` installs `python3` and `curl` itself if they're missing, and stops if `python3` is older than 3.10.
 
 ## Quick start
 
@@ -269,7 +269,7 @@ Rebuilds the PC from the data folder and `<migrationRoot>`. List the steps with 
 
 ## Linux restore
 
-`linux/restore-linux.sh` (a small bash bootstrap) runs `linux/restore_linux.py` (Python 3.8+, standard library only).
+`linux/restore-linux.sh` (a small bash bootstrap) runs `linux/restore_linux.py` (Python 3.10+, standard library only).
 
 | Step | Does |
 | --- | --- |

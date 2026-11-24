@@ -16,7 +16,7 @@ install method that works on this distro is used, ranked by config linux.prefer
 apt/dnf/pacman package, then an AppImage or tarball, then Flathub).
 
 Supports apt (Debian, Ubuntu, Linux Mint, Pop!_OS...), dnf (Fedora) and pacman
-(Arch, CachyOS, EndeavourOS, Manjaro) systems. Standard library only, Python 3.8+.
+(Arch, CachyOS, EndeavourOS, Manjaro) systems. Standard library only, Python 3.10+.
 """
 
 import argparse

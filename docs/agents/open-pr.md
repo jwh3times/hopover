@@ -10,6 +10,8 @@
 - Repo root: `uv run shellcheck linux/restore-linux.sh && bash -n linux/restore-linux.sh`, only
   when a `*.sh` file changed.
 - Repo root: `uv run python -m unittest discover -s linux/tests`, only when `linux/` changed.
+- Repo root: `uv run --isolated --no-project --python 3.10 python -m unittest discover -s linux/tests`,
+  with the same condition: the unit tests on the 3.10 floor, without touching the project's venv.
 - Repo root: `powershell -NoProfile -File tests/Invoke-PowerShellChecks.ps1`, only when a `*.ps1`
   or `*.psd1` file changed (parse, PSScriptAnalyzer and Pester in Windows PowerShell 5.1).
 - Repo root: `pwsh -NoProfile -File tests/Invoke-PowerShellChecks.ps1`, with the same condition, in
