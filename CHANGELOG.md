@@ -14,6 +14,13 @@ _`v0.0.0` marks the last commit before this changelog and has no section._
 
 No unreleased changes.
 
+## [0.2.3] - 2026-11-25
+
+### Changed
+
+- CI and the release workflow run on Node 26, the newest release, instead of 22. The agent and
+  release scripts in `scripts/` still run on Node 22 and later.
+
 ## [0.2.2] - 2026-11-25
 
 ### Changed
