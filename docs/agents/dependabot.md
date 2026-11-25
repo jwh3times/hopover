@@ -35,9 +35,9 @@ modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and 
 
 ## Resolution
 
-- **Toolchain.** Node from `.nvmrc` (22), Python from `.python-version` (3.15, the newest), and
-  3.10 for the floor's unit-test run (ruff's `target-version = "py310"` covers its syntax). If
-  `uv python find 3.15` or `3.10` fails, run `uv python install` with that version.
+- **Toolchain.** Node from `.nvmrc` (26, the newest), Python from `.python-version` (3.15, the
+  newest), and 3.10 for the floor's unit-test run (ruff's `target-version = "py310"` covers its
+  syntax). If `uv python find 3.15` or `3.10` fails, run `uv python install` with that version.
 - **uv** (`pyproject.toml`, `uv.lock`), from the repository root: `uv lock --check`, then
   `uv sync --frozen`.
 
