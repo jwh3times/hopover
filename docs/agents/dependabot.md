@@ -53,7 +53,9 @@ modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and 
 - **Dependabot reads `.python-version` for the `uv` ecosystem and supports only recent Pythons**
   (3.10 to 3.15 on 2026-11-24). A pin below its range fails every `uv` update job before it reads a
   dependency, with `tool_version_not_supported`, and opens no PR: Hopover's first run did, on
-  3.9. Check the `Dependabot Updates` runs when `uv` PRs stop arriving.
+  3.9. The 3.15 pin works: its first `uv` run, on 2026-11-25, concluded `success`. Check the
+  `Dependabot Updates` runs when `uv` PRs stop arriving: a `success` that opens no PR means no
+  update was due.
 
 ## Playbook
 
