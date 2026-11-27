@@ -45,7 +45,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
 $DataDir = Resolve-DataDir $DataDir
-$Config  = Get-MigrationConfig $DataDir
+$Config  = Get-Options $DataDir
 New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
 if (-not $OutFile)    { $OutFile    = Join-Path $DataDir 'Installed-Apps-Catalog.md' }
 if (-not $WingetFile) { $WingetFile = Join-Path $DataDir 'winget-packages.json' }

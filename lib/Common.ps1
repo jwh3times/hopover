@@ -3,7 +3,7 @@
 #     $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 #     . (Join-Path $scriptDir 'lib\Common.ps1')
 #     $DataDir = Resolve-DataDir $DataDir
-#     $Config  = Get-MigrationConfig $DataDir
+#     $Config  = Get-Options $DataDir
 #
 # Works in Windows PowerShell 5.1 (what a fresh install has) and PowerShell 7.
 
@@ -59,7 +59,7 @@ function ConvertTo-PlainHashtable($Value) {
     return $Value
 }
 
-# Defaults for everything config.json can set. See config.example.json for what each one means.
+# Defaults for every Option. See config.example.json for what each one means.
 function Get-ConfigDefaults {
     [ordered]@{
         devRoot           = 'C:\dev'
@@ -67,6 +67,7 @@ function Get-ConfigDefaults {
         useOnlyRepos      = @()
         migrationRoot     = ''
         keepDrives        = @()
+        wipedDrives       = @()
         excludedTypeRoots = @('%USERPROFILE%\Downloads')
         maxFileMB         = 1024
         portableRoots     = @('%USERPROFILE%\OneDrive\Documents', '%USERPROFILE%\Documents', '%USERPROFILE%\Desktop', '%USERPROFILE%\Downloads',
@@ -79,30 +80,61 @@ function Get-ConfigDefaults {
     }
 }
 
-# data\config.json merged over the defaults (one level deep for the nested sections).
-function Get-MigrationConfig([string]$DataDir) {
-    $cfg = Get-ConfigDefaults
-    $file = Join-Path $DataDir 'config.json'
-    if (Test-Path -LiteralPath $file) {
-        $user = ConvertTo-PlainHashtable (Get-Content -LiteralPath $file -Raw | ConvertFrom-Json)
-        foreach ($k in @($user.Keys)) {
-            if ($k.StartsWith('$') -or $k.StartsWith('_')) { continue }   # $schema, _comment
-            if ($cfg[$k] -is [System.Collections.IDictionary] -and $user[$k] -is [System.Collections.IDictionary]) {
-                foreach ($k2 in @($user[$k].Keys)) { $cfg[$k][$k2] = $user[$k][$k2] }
-            } else {
-                $cfg[$k] = $user[$k]
+# Where Hopover keeps its Options on this PC: %LOCALAPPDATA%\Hopover\options.json.
+function Get-OptionsPath {
+    $base = $env:LOCALAPPDATA
+    if (-not $base) { $base = Join-Path $env:USERPROFILE 'AppData\Local' }
+    return Join-Path $base 'Hopover\options.json'
+}
+
+# One options file's keys over $Options, one level deep for the nested sections. $schema and
+# _comment keys are skipped at both levels. restore_linux.py's load_options follows the same rule.
+function Merge-OptionsFile($Options, [string]$File) {
+    if (-not (Test-Path -LiteralPath $File)) { return $false }
+    $user = ConvertTo-PlainHashtable (Get-Content -LiteralPath $File -Raw | ConvertFrom-Json)
+    foreach ($k in @($user.Keys)) {
+        if ($k.StartsWith('$') -or $k.StartsWith('_')) { continue }
+        if ($Options[$k] -is [System.Collections.IDictionary] -and $user[$k] -is [System.Collections.IDictionary]) {
+            foreach ($k2 in @($user[$k].Keys)) {
+                if ($k2.StartsWith('$') -or $k2.StartsWith('_')) { continue }
+                $Options[$k][$k2] = $user[$k][$k2]
             }
+        } else {
+            $Options[$k] = $user[$k]
         }
     }
-    $cfg['_file']   = $file
-    $cfg['_exists'] = Test-Path -LiteralPath $file
-    return $cfg
+    return $true
+}
+
+# Hopover's Options, in layers: the defaults, then the data folder's config.json (the layout
+# from before Options), then options.json in the per-user Hopover folder. A later layer wins key
+# by key, so a config.json key that options.json doesn't set still applies.
+# _file is the file to edit: options.json when it exists, else the data folder's config.json,
+# which survives the wipe with the data folder (options.json sits on the Windows drive).
+function Get-Options([string]$DataDir) {
+    $opt = Get-ConfigDefaults
+    $configFile  = if ($DataDir) { Join-Path $DataDir 'config.json' } else { '' }
+    $optionsFile = Get-OptionsPath
+    $hasConfig  = $configFile -and (Merge-OptionsFile $opt $configFile)
+    $hasOptions = Merge-OptionsFile $opt $optionsFile
+    $opt['_file']   = if ($configFile -and -not $hasOptions) { $configFile } else { $optionsFile }
+    $opt['_exists'] = [bool]($hasConfig -or $hasOptions)
+    return $opt
+}
+
+# Drive letters that will be erased by the reinstall: the Windows drive always, plus the
+# wipedDrives Option. Letters come back upper-case and without a colon, each once.
+function Get-WipedDrives($Options) {
+    $letters = @($env:SystemDrive) + @($Options['wipedDrives']) |
+        Where-Object { $_ } | ForEach-Object { ([string]$_).Trim().TrimEnd('\', '/', ':').ToUpper() } | Where-Object { $_ -match '^[A-Z]$' }
+    $seen = @{}
+    return @($letters | Where-Object { -not $seen.ContainsKey($_) -and ($seen[$_] = $true) })
 }
 
 # A setting that must be set before a script can run.
 function Assert-ConfigValue($Config, [string]$Name, [string]$Why) {
     if (-not $Config[$Name]) {
-        throw "Set ""$Name"" in $($Config['_file']) ($Why). Copy config.example.json from the tool folder to start."
+        throw "Set ""$Name"" in $($Config['_file']) ($Why). config.example.json in the tool folder lists every option."
     }
 }
 

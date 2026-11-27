@@ -11,7 +11,7 @@ Run it through restore-linux.sh, which installs python3 and curl first if needed
     linux/restore-linux.sh --list        # list the steps
 
 Apps are translated with catalog/linux-packages.json. For each app the first
-install method that works on this distro is used, ranked by config linux.prefer
+install method that works on this distro is used, ranked by the linux.prefer option
 (default: the vendor's own repo, package or installer, then the distro's
 apt/dnf/pacman package, then an AppImage or tarball, then Flathub).
 
@@ -136,6 +136,32 @@ def load_json(path, default=None):
 
 def expand(path):
     return Path(os.path.expandvars(os.path.expanduser(str(path))))
+
+
+def options_path():
+    """Where Hopover keeps its Options on Linux: $XDG_CONFIG_HOME/hopover/options.json (~/.config)."""
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return Path(base) / "hopover" / "options.json"
+
+
+def load_options(data):
+    """Hopover's Options, in layers: the data folder's config.json (the layout from before
+    Options), then options.json over it. A later layer wins key by key, one level deep for
+    nested sections, so a config.json key options.json doesn't set still applies. $schema and
+    _comment keys are dropped at both levels. lib/Common.ps1's Get-Options follows the same rule."""
+    opt = {}
+    for path in (Path(data) / "config.json", options_path()):
+        layer = load_json(path, {}) or {}
+        for k, v in layer.items():
+            if k.startswith(("$", "_")):
+                continue
+            if isinstance(v, dict):
+                section = dict(opt.get(k) or {}) if isinstance(opt.get(k), dict) else {}
+                section.update({k2: v2 for k2, v2 in v.items() if not k2.startswith(("$", "_"))})
+                opt[k] = section
+            else:
+                opt[k] = v
+    return opt
 
 
 def http_get(url, timeout=60, headers=None):
@@ -440,10 +466,10 @@ class Ctx:
         self.run = Runner(self.sys, self.dry)
         self.data = Path(args.data).expanduser().resolve()
         self.settings = self.data / "settings"
-        cfg = load_json(self.data / "config.json", {}) or {}
+        cfg = load_options(self.data)
         self.config = cfg
         linux = dict(DEFAULT_LINUX)
-        linux.update({k: v for k, v in (cfg.get("linux") or {}).items() if not k.startswith("_")})
+        linux.update(cfg.get("linux") or {})
         if args.prefer:
             linux["prefer"] = [x.strip() for x in args.prefer.split(",") if x.strip()]
         if args.no_flatpak:
@@ -1980,7 +2006,7 @@ def main():
         help="folder holding the extras archive (default: look for <migrationRoot name>/extras on mounted drives)",
     )
     ap.add_argument(
-        "--dev-root", help="where to clone repos (default: config linux.devRoot, ~/dev)"
+        "--dev-root", help="where to clone repos (default: the linux.devRoot option, ~/dev)"
     )
     ap.add_argument("--steps", help="comma-separated steps to run (default: all; see --list)")
     ap.add_argument(
@@ -1995,13 +2021,13 @@ def main():
     )
     ap.add_argument(
         "--prefer",
-        help="install source order, e.g. vendor,distro,portable,flatpak (default: config linux.prefer)",
+        help="install source order, e.g. vendor,distro,portable,flatpak (default: the linux.prefer option)",
     )
     ap.add_argument("--no-flatpak", action="store_true", help="never use Flathub")
     ap.add_argument(
         "--aur",
         choices=["auto", "never"],
-        help="use an AUR helper (yay/paru) if one is installed (default: config linux.aur)",
+        help="use an AUR helper (yay/paru) if one is installed (default: the linux.aur option)",
     )
     ap.add_argument("--no-overwrite", action="store_true", help="leave existing config files alone")
     ap.add_argument(

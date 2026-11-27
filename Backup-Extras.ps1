@@ -5,9 +5,9 @@
 
       - app data of the apps in catalog\app-data.json that are installed here
         (some live under Program Files, which most cloud backups exclude),
-        plus your own entries from config.json appData.custom
+        plus your own entries from the appData.custom option
       - files with commonly excluded extensions (.exe, .msi, .dll, .iso, ...)
-        under the folders in config.json excludedTypeRoots: portable apps, installers
+        under the folders in the excludedTypeRoots option: portable apps, installers
       - the dev root: folders not in git, loose root files, gitignored local
         files (.env and friends) and uncommitted changes as patches
       - Docker named volumes (Docker must be running)
@@ -20,7 +20,7 @@
         powershell -ExecutionPolicy Bypass -File .\Backup-Extras.ps1 -Only docker-*          # rerun one group
         powershell -ExecutionPolicy Bypass -File .\Backup-Extras.ps1 -Include app-thunderbird-*  # add optional items
 
-    Settings come from <data>\config.json; parameters override them.
+    Defaults come from the Options; parameters override them.
 #>
 
 [CmdletBinding(PositionalBinding = $false)]
@@ -28,7 +28,7 @@ param(
     # Data folder (default: $env:HOPOVER_DATA, else .\data).
     [string]$DataDir,
 
-    # Default: <migrationRoot>\extras from config.json.
+    # Default: <migrationRoot>\extras from the Options.
     [string]$Destination,
     [string]$DevRoot,
 
@@ -52,7 +52,7 @@ $ErrorActionPreference = 'Continue'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
 $DataDir = Resolve-DataDir $DataDir
-$Config  = Get-MigrationConfig $DataDir
+$Config  = Get-Options $DataDir
 
 if (-not $Destination) {
     Assert-ConfigValue $Config 'migrationRoot' 'a folder on a drive that will not be wiped'

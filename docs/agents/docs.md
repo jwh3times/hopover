@@ -4,8 +4,8 @@
 
 - `README.md`: what Hopover is, what each script does, how to capture a PC and restore it on
   Windows or Linux, and the configuration; for people running the tool. Update when a script, a
-  parameter, a `config.json` setting (`config.example.json`, `Get-ConfigDefaults` in
-  `lib/Common.ps1`), a restore step (`STEPS` in `linux/restore_linux.py`) or the catalog format
+  parameter, an option or where options are read from (`config.example.json`,
+  `Get-ConfigDefaults` and `Get-Options` in `lib/Common.ps1`), a restore step (`STEPS` in `linux/restore_linux.py`) or the catalog format
   changes.
 - `CHECKLIST.md`: the step-by-step order for moving a PC, from capture to wipe to restore. Update
   when a script is added or removed, or when `Test-WipeReady.ps1` checks something new.
@@ -18,6 +18,8 @@
 - `changelog.d/*.md`: each branch's changelog fragment (every file there but the README), stamped
   into `CHANGELOG.md` after its merge and checked by the `changelog` CI job. `ship-owned`, like the
   `VERSION` file.
+- `GLOSSARY.md`: the project's language, one tight definition per term with the words to avoid,
+  and no implementation detail. Update when a term is settled or renamed while designing a change.
 - `docs/adr/*.md`: architecture decision records, one decision each with the reason it was made.
   Add one when a decision is hard to reverse and would surprise a reader; supersede rather than
   rewrite.
@@ -44,8 +46,8 @@
 - Scripts and their parameters in `README.md`: the `param()` blocks of the root `*.ps1` files and
   `restore-linux.sh --help`.
 - Restore steps in `README.md`: `STEPS` in `linux/restore_linux.py`.
-- Configuration in `README.md`: `config.example.json` and `Get-ConfigDefaults` in
-  `lib/Common.ps1`.
+- Configuration in `README.md`: `config.example.json`, and `Get-ConfigDefaults` and
+  `Get-Options` in `lib/Common.ps1` (where options are read from, and in what order).
 - CI jobs and their commands in `AGENTS.md` and `docs/agents/open-pr.md`:
   `.github/workflows/ci.yml`.
 - Dev tools in `docs/agents/dependabot.md`: `pyproject.toml` and `tests/Invoke-PowerShellChecks.ps1`.

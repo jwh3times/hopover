@@ -17,7 +17,7 @@ param(
     # Data folder (default: $env:HOPOVER_DATA, else .\data).
     [string]$DataDir,
 
-    # Default: <migrationRoot>\drivers from config.json.
+    # Default: <migrationRoot>\drivers from the Options.
     [string]$Destination
 )
 
@@ -25,7 +25,7 @@ $ErrorActionPreference = 'Continue'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
 $DataDir = Resolve-DataDir $DataDir
-$Config  = Get-MigrationConfig $DataDir
+$Config  = Get-Options $DataDir
 if (-not $Destination) {
     Assert-ConfigValue $Config 'migrationRoot' 'a folder on a drive that will not be wiped'
     $Destination = Join-Path (Expand-ConfigPath $Config.migrationRoot) 'drivers'

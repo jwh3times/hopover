@@ -17,7 +17,7 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 
 A user's exports and `config.json` live in `data\`, which is usually a separate private git repository checked out there. This repo ignores the whole folder and must work when it's absent.
 
-- Never commit anything from `data\` to this repo, and never copy personal values (names, paths, drive letters, repo lists, hostnames) into the tool's code, catalogs or docs. Use `config.json` settings or placeholders instead.
+- Never commit anything from `data\` to this repo, and never copy personal values (names, paths, drive letters, repo lists, hostnames) into the tool's code, catalogs or docs. Use options or placeholders instead.
 - When the companion is present, run its git commands from inside `data\`.
 - Scripts find the data folder from `-DataDir`, then `$env:HOPOVER_DATA`, then `data\`.
 - Linters and tests read only tracked files (`git ls-files`, ruff's `extend-exclude`), so they never open `data\`.
@@ -29,6 +29,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 - Keep `*.sh` and `*.py` LF-only (`.gitattributes` enforces it).
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
+- Options (`options.json`, layered over a data folder's `config.json`) are read by `Get-Options` in `lib/Common.ps1` and `load_options` in `restore_linux.py`, with the same keys and the same merge rule; change both together, and their tests.
 - A PSScriptAnalyzer rule is excluded in `PSScriptAnalyzerSettings.psd1` only with the reason beside it; a ruff rule likewise in `pyproject.toml`.
 
 ## Commands
