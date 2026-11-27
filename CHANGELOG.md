@@ -14,6 +14,15 @@ _`v0.0.0` marks the last commit before this changelog and has no section._
 
 No unreleased changes.
 
+## [0.5.2] - 2026-11-27
+
+### Changed
+
+- For contributors, `AGENTS.md` lists two more Windows PowerShell 5.1 traps. A file from
+  `Get-ChildItem` turns into its bare name, not its full path, where a string is expected. A
+  process started with its input redirected gets a BOM before what's written to it, so start one
+  with `Start-InputProcess` in `lib/Backup.ps1`.
+
 ## [0.5.1] - 2026-11-27
 
 ### Fixed
