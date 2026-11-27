@@ -14,6 +14,12 @@ _`v0.0.0` marks the last commit before this changelog and has no section._
 
 No unreleased changes.
 
+## [0.5.3] - 2026-11-27
+
+### Changed
+
+- Take the latest shared skills and scripts from `jwh3times/skills` (#11)
+
 ## [0.5.2] - 2026-11-27
 
 ### Changed
