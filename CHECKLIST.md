@@ -6,7 +6,7 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
 
 | Script | Run | What it does |
 | --- | --- | --- |
-| `New-Backup.ps1` | old PC | Runs the four capture scripts below and packs everything into one encrypted file, `<name>.hopover.7z` (restoring straight from it comes next; until then, follow the steps below). |
+| `New-Backup.ps1` | old PC | Runs the four capture scripts below and packs everything into one encrypted file, `<name>.hopover.7z`. On the new Windows PC, `Restore.ps1 -Backup <file>` restores from it; the steps below still work without one. |
 | `Catalog-InstalledApps.ps1` | old PC | Lists installed, Store and portable apps and runs `winget export`. |
 | `Export-Settings.ps1` | old PC | Writes `settings\`: PATH, env vars (secrets withheld), Windows preferences, drive layout, hardware, dev config and package lists, VS Code, Terminal, Claude Code, Codex, startup apps, and `settings\dev\repos.md` (work not in git). |
 | `Set-WindowsPreferences.ps1` | both | Captures and applies Explorer, taskbar, theme, input, Game Bar, power plan, time zone, long paths, Developer Mode and optional features. |
@@ -59,6 +59,7 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
    gh repo clone <you>/hopover-private C:\dev\hopover\data
    ```
    Optional: `.\Show-RestorePlan.ps1` to check or change the plan. **Preview restore** shows what will happen.
+   With a Backup, give every `.\Restore.ps1` below `-Backup "<path>\<name>.hopover.7z"`: each run asks for its password (if it has one), and they all share one unpacked copy, which you delete once the restore is finished (the run tells you where it is).
 3. **Elevated** PowerShell in the tool folder: `.\Restore.ps1`. This runs drivers, drive letters, machine preferences and Windows features, Chocolatey, machine env vars and hosts. Reboot if it asks.
 4. **Normal** PowerShell: `.\Restore.ps1`. This runs winget apps, preferences, env vars and PATH, git config, cloning repos, dev extras, dev packages, VS Code, Terminal, Claude Code, Codex, app data and Docker volumes.
 5. Work through the "Still to do by hand" list it prints: secrets from your password manager, `npm login`, sign-ins, skills, and the apps winget can't install.

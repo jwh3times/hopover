@@ -19,9 +19,9 @@ How `test-prover` runs one test on its own here. The suites and their CI jobs ar
   command with `powershell` in place of `pwsh`.
   Count: `--count "Pester ran ([0-9]+) tests"`, the line the command prints, since Pester's own
   summary puts the passed and failed counts in separate numbers. Worktree: none.
-  `tests/Backup.Tests.ps1` downloads the pinned `7zr.exe` (`lib/7zip.json`) from GitHub on every
-  run, so it needs the network: offline, every test in it goes red in `BeforeAll`, which proves
-  nothing about the guard.
+  `tests/Backup.Tests.ps1` and `tests/Restore.Tests.ps1` download the pinned `7zr.exe`
+  (`lib/7zip.json`) from GitHub on every run, so they need the network: offline, every test in them
+  goes red in `BeforeAll`, which proves nothing about the guard.
 - Repo root: `scripts/*.test.mjs`, node's runner. One file: `node --test <file>`; one test:
   `node --test --test-name-pattern="<name>" <file>`. Worktree: none (the scripts need no
   dependencies).

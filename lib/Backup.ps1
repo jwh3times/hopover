@@ -38,6 +38,25 @@ function Get-SevenZip([string]$CacheDir, $Pin) {
 # The suffix every Backup's file name ends with (split Backups add .001, .002, ...).
 $BackupSuffix = '.hopover.7z'
 
+# The hopover.json format this Hopover writes, and the newest it can restore. Every older one
+# stays readable; raise this only with a reader for the new format.
+$BackupFormatVersion = 1
+
+# A password read from a pipe, as a SecureString. Windows PowerShell 5.1 on a UTF-8 console puts
+# a BOM (U+FEFF) in front of what it pipes to another program: it isn't part of the password.
+function ConvertFrom-PipedPassword([string]$Line) {
+    if ($null -eq $Line) { return $null }
+    $text = $Line.TrimStart([char]0xFEFF)
+    if (-not $text) { return $null }
+    return (New-Object System.Net.NetworkCredential('', $text)).SecurePassword
+}
+
+# A Backup's password: one line from standard input when a program pipes it in, else typed once.
+function Read-BackupPassword([string]$Prompt = 'Password') {
+    if ([Console]::IsInputRedirected) { return ConvertFrom-PipedPassword ([Console]::In.ReadLine()) }
+    return Read-Host $Prompt -AsSecureString
+}
+
 # Plain text from a SecureString, for 7-Zip's standard input only.
 function ConvertFrom-BackupPassword([securestring]$Password) {
     if (-not $Password) { return $null }
@@ -89,7 +108,7 @@ function Invoke-SevenZip([string]$SevenZip, [string[]]$Arguments, [securestring]
             # 7-Zip exited before reading its input (an unencrypted archive needs none).
         }
         $p.WaitForExit()
-        return [pscustomobject]@{ ExitCode = $p.ExitCode; Output = $stdout.Result + $stderr.Result }
+        return [pscustomobject]@{ ExitCode = $p.ExitCode; Output = $stdout.Result + $stderr.Result; Stdout = $stdout.Result }
     } finally {
         # Stopped part-way (Ctrl+C, an error): don't leave 7-Zip writing on its own.
         if (-not $p.HasExited) { try { $p.Kill() } catch { } }
@@ -204,7 +223,7 @@ function Get-BackupGroups([string]$Source, $Apps) {
 function Write-BackupManifest([string]$Source, [bool]$Encrypted, [bool]$PasswordsAndKeys, [string[]]$Captured) {
     $apps = @(Get-BackupApps (Join-Path $Source 'data'))
     $m = [ordered]@{
-        formatVersion            = 1
+        formatVersion            = $BackupFormatVersion
         hopoverVersion           = Get-HopoverVersion
         created                  = (Get-Date).ToUniversalTime().ToString('o')
         sourceOs                 = 'windows'
@@ -254,7 +273,7 @@ function New-Backup {
         $r = Invoke-SevenZip -SevenZip $SevenZip -Arguments $arguments -Password $(if ($NoEncryption) { $null } else { $Password }) -WorkingDirectory $Source
         if ($r.ExitCode -ne 0) {
             # Exit 1 is 7-Zip's "some files couldn't be read": a Backup missing files isn't one to trust.
-            throw "7-Zip couldn't make the Backup (exit $($r.ExitCode)): $(($r.Output -split "`n" | Where-Object { $_ -match 'error' } | Select-Object -First 3) -join ' ')"
+            throw "7-Zip couldn't make the Backup (exit $($r.ExitCode)): $(Get-SevenZipWords $r)"
         }
         $done = $true
     } finally {
@@ -298,9 +317,136 @@ function Test-Backup {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return [pscustomobject]@{ Result = 'missing'; Message = "No file at $Path" } }
     if (-not $SevenZip) { $SevenZip = Get-SevenZip }
     $r = Invoke-SevenZip -SevenZip $SevenZip -Arguments @('t', '-sccUTF-8', '-bd', $Path) -Password $Password
-    $result = if ($r.ExitCode -eq 0) { 'ok' }
-        elseif ($r.Output -match 'Wrong password') { if ($Password) { 'wrong-password' } else { 'password-needed' } }
-        elseif ($r.Output -match 'Break signaled|Enter password') { 'password-needed' }
-        else { 'damaged' }
-    return [pscustomobject]@{ Result = $result; Message = ($r.Output.Trim() -split "`r?`n" | Select-Object -Last 3) -join ' ' }
+    return [pscustomobject]@{ Result = (Get-SevenZipResult $r $Password); Message = (Get-SevenZipWords $r -Last 3) }
+}
+
+# What a 7-Zip run on a Backup came to: ok, wrong-password, password-needed or damaged.
+function Get-SevenZipResult($Run, [securestring]$Password) {
+    if ($Run.ExitCode -eq 0) { return 'ok' }
+    if ($Run.Output -match 'Wrong password') { if ($Password) { return 'wrong-password' } else { return 'password-needed' } }
+    if ($Run.Output -match 'Break signaled|Enter password') { return 'password-needed' }
+    return 'damaged'
+}
+
+# 7-Zip's own words about a run, for a message: its error lines, or with -Last its final lines.
+function Get-SevenZipWords($Run, [int]$Last = 0) {
+    $lines = @($Run.Output.Trim() -split "`r?`n" | Where-Object { $_.Trim() })
+    $pick = if ($Last) { $lines | Select-Object -Last $Last } else { $lines | Where-Object { $_ -match 'error' } | Select-Object -First 3 }
+    return (@($pick) -join ' ')
+}
+
+# The Backup's name: its file name without .hopover.7z (or .hopover.7z.001); a renamed file keeps
+# its own name, less the extension. Made safe as a folder name; "Backup" when nothing usable is left.
+function Get-BackupName([string]$Path) {
+    $leaf = Split-Path -Leaf $Path
+    $name = $null
+    foreach ($end in ($BackupSuffix + '.001'), $BackupSuffix) {
+        if ($leaf.EndsWith($end, [StringComparison]::OrdinalIgnoreCase)) { $name = $leaf.Substring(0, $leaf.Length - $end.Length); break }
+    }
+    if ($null -eq $name) { $name = [IO.Path]::GetFileNameWithoutExtension($leaf -replace '\.\d{3}$', '') }
+    foreach ($c in [IO.Path]::GetInvalidFileNameChars()) { $name = $name.Replace([string]$c, '_') }
+    $name = $name.Trim().Trim('.').Trim()
+    if (-not $name) { return 'Backup' }
+    return $name
+}
+
+# Reads a Backup's hopover.json without unpacking anything (7-Zip streams it to standard output).
+# Result: ok (with Manifest and Raw, its exact text), wrong-password, password-needed, missing,
+# damaged, or newer when a newer Hopover made it; Message says it in plain words.
+function Read-BackupManifest {
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [securestring]$Password,
+        [string]$SevenZip
+    )
+    $name = Get-BackupName $Path
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return [pscustomobject]@{ Result = 'missing'; Manifest = $null; Raw = $null; Message = "There is no Backup at $Path." } }
+    if (-not $SevenZip) { $SevenZip = Get-SevenZip }
+    $r = Invoke-SevenZip -SevenZip $SevenZip -Arguments @('e', '-so', '-sccUTF-8', '-bd', $Path, 'hopover.json') -Password $Password
+    $result = Get-SevenZipResult $r $Password
+    $manifest = $null
+    if ($result -eq 'ok') {
+        try { $manifest = $r.Stdout | ConvertFrom-Json } catch { $manifest = $null }
+        $version = 0
+        if ($null -eq $manifest -or -not [int]::TryParse([string]$manifest.formatVersion, [ref]$version)) { $result = 'damaged' }
+        elseif ($version -gt $BackupFormatVersion) { $result = 'newer' }
+    }
+    $message = switch ($result) {
+        'ok'              { "$name opens." }
+        'wrong-password'  { "That password doesn't open the Backup ""$name""." }
+        'password-needed' { "The Backup ""$name"" is encrypted: it needs its password." }
+        'newer'           { 'This Backup was made by a newer Hopover; download the latest.' }
+        default           { "$Path isn't a Backup Hopover can open: $(Get-SevenZipWords $r -Last 2)" }
+    }
+    return [pscustomobject]@{ Result = $result; Manifest = $manifest; Raw = $r.Stdout; Message = $message }
+}
+
+# Which Backup a hopover.json belongs to: the SHA-256 of its exact text. Parsing would lose detail
+# (PowerShell 7 turns `created` into a date and drops its fractions of a second).
+function Get-BackupIdentity([string]$ManifestText) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($Utf8.GetBytes($ManifestText))) -replace '-', '') } finally { $sha.Dispose() }
+}
+
+# Where a Backup is (or would be) unpacked: <RestoreRoot>\<its name>, the restore root being
+# %LOCALAPPDATA%\Hopover\restore by default.
+function Get-UnpackFolder([string]$Path, [string]$RestoreRoot) {
+    if (-not $RestoreRoot) { $RestoreRoot = Join-Path (Split-Path -Parent (Get-OptionsPath)) 'restore' }
+    return Join-Path $RestoreRoot (Get-BackupName $Path)
+}
+
+# The complete unpacked copy of this Backup, if an earlier run left one; $null otherwise. $Checked
+# is Read-BackupManifest's ok result for it. Unpacks nothing.
+function Get-UnpackedBackup([string]$Path, $Checked, [string]$RestoreRoot) {
+    $folder = Get-UnpackFolder $Path $RestoreRoot
+    $marker = Read-JsonFile (Join-Path $folder '.hopover-unpacked.json')
+    if ($marker -and $marker.complete -and $marker.backup -eq (Get-BackupIdentity $Checked.Raw)) { return $folder }
+    return $null
+}
+
+# Unpacks a Backup into <RestoreRoot>\<its name>, for Restore.ps1 to run against. Refuses a wrong
+# password or a newer Backup before unpacking anything. A rerun for the same Backup reuses the
+# complete copy (Reused). A different Backup with the same name, or a copy an earlier run left
+# half-done, is unpacked again. Only a folder carrying Hopover's marker is ever replaced: the marker
+# is written before unpacking starts and marked complete when it ends. $Checked passes in a
+# Read-BackupManifest result the caller already has, so hopover.json isn't read twice.
+function Expand-Backup {
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [securestring]$Password,
+        [string]$RestoreRoot,
+        $Checked,
+        [string]$SevenZip
+    )
+    if (-not $SevenZip) { $SevenZip = Get-SevenZip }
+    if (-not $Checked) { $Checked = Read-BackupManifest -Path $Path -Password $Password -SevenZip $SevenZip }
+    if ($Checked.Result -ne 'ok') { throw $Checked.Message }
+
+    $folder = Get-UnpackFolder $Path $RestoreRoot
+    if (Get-UnpackedBackup $Path $Checked $RestoreRoot) {
+        return [pscustomobject]@{ Folder = $folder; Manifest = $Checked.Manifest; Reused = $true }
+    }
+    $markerFile = Join-Path $folder '.hopover-unpacked.json'
+    if (Test-Path -LiteralPath $folder) {
+        if (-not (Test-Path -LiteralPath $markerFile)) { throw "$folder is in the way and wasn't unpacked by Hopover; move it, then try again." }
+        Remove-Item -LiteralPath $folder -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    $marker = [ordered]@{ backup = (Get-BackupIdentity $Checked.Raw); from = $Path; complete = $false; unpacked = $null }
+    [IO.File]::WriteAllText($markerFile, (ConvertTo-Json -InputObject $marker), $Utf8)
+    $done = $false
+    try {
+        $run = Invoke-SevenZip -SevenZip $SevenZip -Arguments @('x', '-y', '-sccUTF-8', '-bd', "-o$folder", $Path) -Password $Password
+        if ($run.ExitCode -ne 0) { throw "7-Zip couldn't unpack the Backup (exit $($run.ExitCode)): $(Get-SevenZipWords $run)" }
+        $marker.complete = $true
+        $marker.unpacked = (Get-Date).ToUniversalTime().ToString('o')
+        [IO.File]::WriteAllText($markerFile, (ConvertTo-Json -InputObject $marker), $Utf8)
+        $done = $true
+    } finally {
+        # Failed or stopped part-way: a half copy is no use, and it holds unencrypted files.
+        if (-not $done) { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    return [pscustomobject]@{ Folder = $folder; Manifest = $Checked.Manifest; Reused = $false }
 }
