@@ -108,6 +108,33 @@ Describe 'Restore.ps1 -Backup, for real' {
     }
 }
 
+Describe 'Restore.ps1 -Backup with the password piped in' {
+    It 'uses the password piped in, without the BOM a UTF-8 console puts in front of it' {
+        # Windows PowerShell 5.1 pipes into a PowerShell it starts with a UTF-8 BOM in front when the
+        # console is UTF-8 (code page 65001, as on GitHub's Windows runners), and PowerShell 7 reads
+        # it as the password's first character. The child's input here is those bytes, from a file.
+        $p = New-Profile
+        $stdin = Join-Path $p.Temp 'stdin.txt'
+        [IO.File]::WriteAllBytes($stdin, [byte[]](@(0xEF, 0xBB, 0xBF) + [Text.Encoding]::ASCII.GetBytes("correct horse battery`r`n")))
+        $stdout = Join-Path $p.Home 'stdout.txt'
+        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', """$Restore""", '-Backup', """$BackupFile""", '-DryRun', '-Steps', 'git-config')
+        $saved = @{ LOCALAPPDATA = $env:LOCALAPPDATA; USERPROFILE = $env:USERPROFILE; TEMP = $env:TEMP; TMP = $env:TMP }
+        $savedEncoding = [Console]::InputEncoding
+        try { [Console]::InputEncoding = [Text.Encoding]::UTF8 } catch { Set-ItResult -Skipped -Because 'this host has no console whose encoding can be set'; return }
+        try {
+            $env:LOCALAPPDATA = $p.AppData; $env:USERPROFILE = $p.Home; $env:TEMP = $p.Temp; $env:TMP = $p.Temp
+            $child = Start-Process -FilePath $Shell -ArgumentList $arguments -RedirectStandardInput $stdin -RedirectStandardOutput $stdout `
+                -RedirectStandardError (Join-Path $p.Home 'stderr.txt') -NoNewWindow -Wait -PassThru
+        } finally {
+            [Console]::InputEncoding = $savedEncoding
+            foreach ($k in $saved.Keys) { Set-Item -Path "env:$k" -Value $saved[$k] }
+        }
+        $out = Get-Content -LiteralPath $stdout -Raw
+        $child.ExitCode | Should -Be 0 -Because $out
+        $out | Should -Match 'unpacked for this dry run'
+    }
+}
+
 Describe 'Restore.ps1 -Backup refusing' {
     It 'stops on a wrong password in plain words, before any step, unpacking nothing' {
         $p = New-Profile

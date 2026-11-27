@@ -192,6 +192,36 @@ Describe 'ConvertFrom-PipedPassword' {
     }
 }
 
+Describe 'New-Backup.ps1 with the password piped in' {
+    It 'uses the password piped in, without the BOM a UTF-8 console puts in front of it' {
+        # Windows PowerShell 5.1 pipes into a PowerShell it starts with a UTF-8 BOM in front when the
+        # console is UTF-8 (code page 65001, as on GitHub's Windows runners), and PowerShell 7 reads
+        # it as the password's first character. The child's input here is those bytes, from a file,
+        # on a UTF-8 console; it makes a Backup of no steps.
+        $d = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        foreach ($sub in 'appdata\Hopover\bin', 'data', 'out', 'temp') { New-Item -ItemType Directory -Path (Join-Path $d $sub) | Out-Null }
+        Copy-Item -LiteralPath $SevenZip -Destination (Join-Path $d 'appdata\Hopover\bin')
+        $stdin = Join-Path $d 'stdin.txt'
+        [IO.File]::WriteAllBytes($stdin, [byte[]](@(0xEF, 0xBB, 0xBF) + [Text.Encoding]::ASCII.GetBytes("correct horse battery`r`n")))
+        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', """$(Join-Path $root 'New-Backup.ps1')""",
+            '-Destination', """$(Join-Path $d 'out')""", '-Name', 'piped', '-Steps', ',', '-DataDir', """$(Join-Path $d 'data')""")
+        $saved = @{ LOCALAPPDATA = $env:LOCALAPPDATA; TEMP = $env:TEMP; TMP = $env:TMP }
+        $savedEncoding = [Console]::InputEncoding
+        try { [Console]::InputEncoding = [Text.Encoding]::UTF8 } catch { Set-ItResult -Skipped -Because 'this host has no console whose encoding can be set'; return }
+        try {
+            $env:LOCALAPPDATA = Join-Path $d 'appdata'; $env:TEMP = Join-Path $d 'temp'; $env:TMP = $env:TEMP
+            $child = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -RedirectStandardInput $stdin `
+                -RedirectStandardOutput (Join-Path $d 'stdout.txt') -RedirectStandardError (Join-Path $d 'stderr.txt') -NoNewWindow -Wait -PassThru
+        } finally {
+            [Console]::InputEncoding = $savedEncoding
+            foreach ($k in $saved.Keys) { Set-Item -Path "env:$k" -Value $saved[$k] }
+        }
+        $child.ExitCode | Should -Be 0 -Because ((Get-Content -LiteralPath (Join-Path $d 'stdout.txt'), (Join-Path $d 'stderr.txt') -Raw) -join '')
+        $made = Join-Path $d 'out\piped.hopover.7z'
+        (Test-Backup -Path $made -Password (New-TestPassword 'correct horse battery') -SevenZip $SevenZip).Result | Should -Be 'ok'
+    }
+}
+
 Describe 'Expand-Backup' {
     BeforeAll {
         $pw = New-TestPassword 'correct horse battery'
