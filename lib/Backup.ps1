@@ -63,50 +63,65 @@ function ConvertFrom-BackupPassword([securestring]$Password) {
     return (New-Object System.Net.NetworkCredential('', $Password)).Password
 }
 
+# Windows PowerShell 5.1's .NET has no ArgumentList: one command line, each argument quoted for
+# CreateProcess.
+function Join-ProcessArguments([string[]]$Arguments) {
+    (@($Arguments) | ForEach-Object { if ($_ -match '[\s"]' -or $_ -eq '') { '"' + ($_ -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"' } else { $_ } }) -join ' '
+}
+
+# Starts a process whose standard input is redirected, with nothing written to that input yet.
+# PowerShell 7's .NET takes the encoding to write it in. Windows PowerShell 5.1's .NET writes the
+# console input encoding's preamble the moment the process starts: under code page 65001 a UTF-8
+# BOM, which the program would take as the start of the password. So for the start only, make that
+# encoding the same code page without a preamble.
+function Start-InputProcess([System.Diagnostics.ProcessStartInfo]$StartInfo) {
+    $StartInfo.UseShellExecute = $false
+    $StartInfo.RedirectStandardInput = $true
+    $consoleEncoding = $null
+    if ($StartInfo.PSObject.Properties.Name -contains 'StandardInputEncoding') {
+        $StartInfo.StandardInputEncoding = $Utf8
+    } elseif ([Console]::InputEncoding.GetPreamble().Length) {
+        $consoleEncoding = [Console]::InputEncoding
+        [Console]::InputEncoding = $Utf8
+    }
+    try { return [System.Diagnostics.Process]::Start($StartInfo) }
+    finally { if ($consoleEncoding) { [Console]::InputEncoding = $consoleEncoding } }
+}
+
+# Writes the password, if any, as one UTF-8 line to a process's standard input, then closes it.
+function Send-ProcessPassword([System.Diagnostics.Process]$Process, [securestring]$Password) {
+    try {
+        if ($Password) {
+            # Write the bytes ourselves: 5.1's ProcessStartInfo has no StandardInputEncoding.
+            $bytes = $Utf8.GetBytes((ConvertFrom-BackupPassword $Password) + "`n")
+            $Process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+            $Process.StandardInput.BaseStream.Flush()
+        }
+        $Process.StandardInput.Close()
+    } catch [System.IO.IOException] {
+        # The program exited before reading its input (an unencrypted archive needs none).
+    }
+}
+
 # Runs 7-Zip with the password, if any, on standard input: never on its command line, where other
 # programs could read it. 7-Zip reads it as UTF-8 because of -sccUTF-8. With no password, standard
 # input is closed at once, so a prompt for one ends the run instead of waiting.
 function Invoke-SevenZip([string]$SevenZip, [string[]]$Arguments, [securestring]$Password, [string]$WorkingDirectory) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $SevenZip
-    # Windows PowerShell 5.1's .NET has no ArgumentList: quote each argument for CreateProcess.
-    $psi.Arguments = (@($Arguments) | ForEach-Object { if ($_ -match '[\s"]' -or $_ -eq '') { '"' + ($_ -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"' } else { $_ } }) -join ' '
-    $psi.UseShellExecute = $false
+    $psi.Arguments = Join-ProcessArguments $Arguments
     $psi.CreateNoWindow = $true
-    $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.StandardOutputEncoding = $Utf8
     $psi.StandardErrorEncoding = $Utf8
     if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
-    # Nothing but the password may reach 7-Zip's input. PowerShell 7's .NET takes the encoding to
-    # write it in. Windows PowerShell 5.1's .NET writes the console input encoding's preamble the
-    # moment the process starts: under code page 65001 a UTF-8 BOM, which 7-Zip would take as the
-    # start of the password. So for the start only, make that encoding the same code page without
-    # a preamble.
-    $consoleEncoding = $null
-    if ($psi.PSObject.Properties.Name -contains 'StandardInputEncoding') {
-        $psi.StandardInputEncoding = $Utf8
-    } elseif ([Console]::InputEncoding.GetPreamble().Length) {
-        $consoleEncoding = [Console]::InputEncoding
-        [Console]::InputEncoding = $Utf8
-    }
-    try { $p = [System.Diagnostics.Process]::Start($psi) }
-    finally { if ($consoleEncoding) { [Console]::InputEncoding = $consoleEncoding } }
+    # Nothing but the password may reach 7-Zip's input.
+    $p = Start-InputProcess $psi
     try {
         $stdout = $p.StandardOutput.ReadToEndAsync()
         $stderr = $p.StandardError.ReadToEndAsync()
-        try {
-            if ($Password) {
-                # Write the bytes ourselves: 5.1's ProcessStartInfo has no StandardInputEncoding.
-                $bytes = $Utf8.GetBytes((ConvertFrom-BackupPassword $Password) + "`n")
-                $p.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
-                $p.StandardInput.BaseStream.Flush()
-            }
-            $p.StandardInput.Close()
-        } catch [System.IO.IOException] {
-            # 7-Zip exited before reading its input (an unencrypted archive needs none).
-        }
+        Send-ProcessPassword $p $Password
         $p.WaitForExit()
         return [pscustomobject]@{ ExitCode = $p.ExitCode; Output = $stdout.Result + $stderr.Result; Stdout = $stdout.Result }
     } finally {

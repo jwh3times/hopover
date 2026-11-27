@@ -59,6 +59,8 @@ To keep the data somewhere else, pass `-DataDir <folder>` to any script, or set 
 
 ### On the old PC (before wiping)
 
+The simplest way to make a Backup: double-click **`Hopover.cmd`**, click **Back up**, give it a name, a password and a place to save it (a USB drive, say), and leave Hopover's window open until it says the Backup is made. See [Hopover.cmd](#hopovercmd-and-hopoverps1-both). **Check I'm ready** and **Restore** on that page come in a later version; until then, use the scripts below.
+
 ```powershell
 .\Catalog-InstalledApps.ps1         # apps -> data\Installed-Apps-Catalog.md, data\winget-packages.json
 .\Export-Settings.ps1               # settings -> data\settings\
@@ -125,7 +127,7 @@ Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.c
 | --- | --- | --- |
 | `devRoot`, `repoDepth` | Export-Settings, Backup-Extras, Restore | Folder holding your git checkouts, and how deep to look for repos in it |
 | `useOnlyRepos` | Export-Settings, Backup-Extras | Repos you only use and never push; their local changes aren't reported or archived |
-| `migrationRoot` | New-Backup, Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\`, and is where `New-Backup.ps1` saves a Backup unless told `-Destination` |
+| `migrationRoot` | New-Backup, Hopover, Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\`, and is where `New-Backup.ps1` saves a Backup unless told `-Destination` (and the folder the page suggests) |
 | `keepDrives` | Test-WipeReady | Drive letters that survive the reinstall |
 | `wipedDrives` | none yet | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
 | `excludedTypeRoots`, `maxFileMB` | Backup-Extras | Folders to search for `.exe`/`.msi`/`.dll`/`.iso` and similar files that cloud backups usually skip; per-file size limit |
@@ -143,7 +145,17 @@ Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.c
 
 ## Windows scripts
 
-All of them take `-DataDir`; settings come from the [Options](#options) and parameters override them.
+All of them but `Hopover.ps1` take `-DataDir`; settings come from the [Options](#options) and parameters override them.
+
+### Hopover.cmd and Hopover.ps1 (both)
+
+Hopover's home page, in your browser: **Back up**, **Check I'm ready** and **Restore** ([ADR 0003](docs/adr/0003-powershell-and-a-browser-page.md)). Double-click `Hopover.cmd`: it starts `Hopover.ps1` in Windows PowerShell 5.1 with the script execution policy bypassed for that run, so it works on a fresh install whatever the policy is, in a minimized window titled "Hopover is running — close this to stop".
+
+- **Back up** asks for the Backup's name, a password (typed twice; **Show** shows it, and **Suggest one** makes one of four random words) and where to save it (type a whole folder such as `E:\Backups`, or **Choose…** one). It runs the same `New-Backup.ps1` as the command line, so it makes the same Backup. Steps that need administrator rights (drivers) are left out with a note; run `New-Backup.ps1` elevated to include them.
+- **It runs in the background.** Closing the browser tab doesn't stop it, and opening Hopover again shows how it's going. Only closing Hopover's window, or **Stop…** confirmed on the page, ends it; either way its working copy is removed, and so is the Backup unless it had finished packing.
+- **One Hopover at a time.** Starting it again while it runs just opens the page again.
+- Like the restore plan page, it's served on `http://localhost` only (from port 8765, or the next free one), every request to its API needs a token that changes each run, and the page can reach nothing but Hopover itself. The token is in the address Hopover opens, not in the page, so another user signed in to the same PC can't use it; a page opened without it says to start Hopover again. Hopover makes no network request of its own except downloading 7-Zip.
+- **Options:** `-Port`, `-NoBrowser` (`Hopover.cmd` passes them on). It takes no `-DataDir`: it uses the data folder from `HOPOVER_DATA`, else `data\`.
 
 ### New-Backup.ps1 (old PC)
 
@@ -158,7 +170,7 @@ Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts belo
 - **Inside it:** the exports as a data folder (`data\`, with the Options it was made with as `data\config.json`, and your `restore-plan.json` and `NOTES.md` if you have them), the extras (`extras\`), the drivers (`drivers\`) and `hopover.json`, which records the format version, when and where the Backup was made, whether it's encrypted, and every app by its catalog key with its winget or Chocolatey id. Any 7-Zip opens it with the password.
 - **7-Zip:** 7-Zip's `7zr.exe`, pinned by version and SHA-256 in `lib\7zip.json`. It's downloaded to `%LOCALAPPDATA%\Hopover\bin` on first use, and a file whose hash differs is refused.
 - **Your data folder is only read.** The staging folder (under `%TEMP%`, or `-StagingDir`) is removed afterwards, and an existing Backup with the same name is never overwritten.
-- **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`.
+- **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`, `-EventLog <file>` (also append progress events to that file, one JSON object per line; Hopover's page runs it this way).
 
 To restore on a new Windows PC: `.\Restore.ps1 -Backup "E:\<name>.hopover.7z"` (see [Restore.ps1](#restoreps1-new-windows-pc)).
 
@@ -365,16 +377,17 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 
 | Path | What |
 | --- | --- |
-| `*.ps1` | The Windows scripts above |
+| `Hopover.cmd`, `*.ps1` | Hopover's launcher, and the Windows scripts above |
 | `lib\Common.ps1` | Shared helpers (data folder, Options) |
+| `lib\Server.ps1`, `lib\Jobs.ps1` | The localhost page server, and the jobs (Back up) it runs in the background with their progress events |
 | `lib\Backup.ps1`, `lib\7zip.json` | The Backup module (make, test, find and unpack Backups) and the pinned 7-Zip it uses |
 | `lib\version.txt` | A placeholder that `git archive` fills with the tag, so a release zip records its version in each Backup's `hopover.json` (a clone asks `git describe` instead) |
-| `ui\index.html` | The page `Show-RestorePlan.ps1` serves |
+| `ui\index.html` | The page `Hopover.ps1` and `Show-RestorePlan.ps1` serve |
 | `catalog\` | App-data locations and the Linux translation tables |
 | `linux\` | `restore-linux.sh`, `restore_linux.py`, and `tests\` |
 | `config.example.json` | Every option with its default; the starting point for `data\config.json` |
 | `CHECKLIST.md` | The step-by-step wipe and reinstall checklist |
-| `tests\` | Pester tests for the Windows scripts, and `Invoke-PowerShellChecks.ps1` (parse, lint, test) |
+| `tests\` | Pester tests for the Windows scripts, `api-cases.json` (the page API's request and response cases, which every Hopover server must pass), and `Invoke-PowerShellChecks.ps1` (parse, lint, test) |
 | `pyproject.toml`, `uv.lock`, `PSScriptAnalyzerSettings.psd1` | Pinned lint and format tools for development (the tool itself needs none) |
 | `CHANGELOG.md`, `changelog.d\`, `VERSION` | Release notes, stamped when each change merges, and the release line |
 | `AGENTS.md`, `CLAUDE.md`, `docs\`, `scripts\`, `.agents\`, `.claude\` | Guidance, settings, decisions and scripts for coding agents working on this repo |

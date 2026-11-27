@@ -6,8 +6,8 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 
 ## Layout
 
-- Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, Options, helpers). `lib\Backup.ps1` is the Backup module (make, test, find, unpack), with the 7-Zip it uses pinned by SHA-256 in `lib\7zip.json`; its tests and `tests\Restore.Tests.ps1` download that `7zr.exe` into Pester's `TestDrive` on every run, so they need the network.
-- `ui\index.html` is the page `Show-RestorePlan.ps1` serves.
+- Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, Options, helpers). `lib\Backup.ps1` is the Backup module (make, test, find, unpack), with the 7-Zip it uses pinned by SHA-256 in `lib\7zip.json`; its tests, `tests\Restore.Tests.ps1` and `tests\Api.Tests.ps1` download that `7zr.exe` into Pester's `TestDrive` on every run, so they need the network.
+- `ui\index.html` is the one page: `Hopover.ps1` (started by `Hopover.cmd`) serves it on its home view, `Show-RestorePlan.ps1` on its restore plan view. Both use `lib\Server.ps1` (localhost listener, per-run token, Content-Security-Policy). `lib\Jobs.ps1` runs a Back up as a job in a child process, in a kill-on-close job object, with its progress as JSON events in `%LOCALAPPDATA%\Hopover\jobs\<id>\events.jsonl`.
 - `catalog\` holds data, not code: `app-data.json` (app-data folders to back up), `linux-packages.json` (Windows app to Linux install methods), `linux-repos.json` (vendor repos, installer scripts, prerequisites).
 - `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.10+, standard library only), plus `tests\`.
 - `tests\` holds the Pester tests for the Windows scripts and `Invoke-PowerShellChecks.ps1`.
@@ -26,9 +26,10 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 
 - Windows scripts must run in Windows PowerShell 5.1 (a fresh install has nothing newer) and PowerShell 7. Watch for: `$PSScriptRoot` is empty in `param()` defaults; `ConvertFrom-Json` returns a top-level array as one object; variable names are case-insensitive (`$s` is `$S`); `powershell -File` passes `a,b` as one string (split list parameters with `Split-List`). Every script uses `[CmdletBinding(PositionalBinding = $false)]`.
 - `restore_linux.py` runs on the distro's own `python3`, as old as 3.10, and `restore-linux.sh` refuses an older one. Ruff targets `py310` and rejects newer syntax, and CI's unit tests run on both the floor (3.10) and the newest Python (`.python-version`'s 3.15). Moving the floor changes all four together: the guard in `restore-linux.sh`, ruff's `target-version`, the 3.10 step in `ci.yml`, and the docs that state it.
-- Keep `*.sh` and `*.py` LF-only (`.gitattributes` enforces it).
+- Keep `*.sh` and `*.py` LF-only, and `*.cmd` CRLF, which `cmd.exe` needs (`.gitattributes` enforces both).
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
+- The page API is a contract: `tests/api-cases.json` holds its request and response cases, which every Hopover server runs (`tests/Api.Tests.ps1` for `Hopover.ps1`). An API change changes that file, the page and every server together. Job events and API errors carry a message code; the page's one English string table (`MSG` in `ui/index.html`) words each code, so a new code needs an entry there.
 - `Restore.ps1` runs only the steps of its prompt's pass, and GitHub's Windows runners are elevated, so a test that runs it must pass from either prompt (`tests/Restore.Tests.ps1` restores `app-data`, which runs in both, from an extras item of the current pass).
 - Options (`options.json`, layered over a data folder's `config.json`) are read by `Get-Options` in `lib/Common.ps1` and `load_options` in `restore_linux.py`, with the same keys and the same merge rule; change both together, and their tests.
 - An app's catalog key is found the same way by `Resolve-CatalogKey` in `lib/Backup.ps1` and `Catalog.lookup` in `restore_linux.py` (package key, then alias, then pattern, then `windowsOnly`); change both together. The extras items that hold secrets (`$SecretExtras` in `lib/Backup.ps1`) are named by `Backup-Extras.ps1` and `catalog/app-data.json`: a new secret-holding item goes in that list, or an unencrypted Backup carries it.

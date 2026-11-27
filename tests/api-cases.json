@@ -1,0 +1,195 @@
+{
+  "$comment": [
+    "The page API's request and expected-response cases (seam 2 of spec #12). Every Hopover server runs them: tests/Api.Tests.ps1 for Hopover.ps1, and the Linux server's own runner once it exists. A change to the API changes this file, and every server, together.",
+    "Each case starts a fresh server for a user with nothing on record, whose Back up runs a stand-in for the real one: 'backup' says which. 'finishes' makes a pretend Backup and ends; 'waits' leaves a staging copy and a part-written Backup, then waits to be stopped.",
+    "A step sends 'request' (token: false leaves out this run's token), repeats it while 'until' doesn't match (for up to 30 seconds), then checks 'expect', and stores values from the response in 'save' (a dotted path into its JSON). 'files' names paths that must exist ('present') or not ('absent') after the step.",
+    "Matching: an object matches when each of its keys does; an array matches when its items match items of the response's array in the same order, others allowed between them, and [] matches only an empty array; a string may hold * wildcards; null matches null or a missing key. '{name}' is replaced by a saved value, or by 'destination' (an empty folder) or 'missing' (a folder that isn't there)."
+  ],
+  "cases": [
+    {
+      "name": "serves the page under a policy that lets it reach only this server",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/", "token": false },
+          "expect": { "status": 200, "headers": { "Content-Security-Policy": "*default-src 'none'*connect-src 'self'*" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses an API request without this run's token",
+      "steps": [
+        { "request": { "method": "GET", "path": "/api/state", "token": false }, "expect": { "status": 403 } },
+        { "request": { "method": "POST", "path": "/api/backup", "token": false, "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } }, "expect": { "status": 403 } }
+      ]
+    },
+    {
+      "name": "says nothing has run yet",
+      "steps": [
+        { "request": { "method": "GET", "path": "/api/state" }, "expect": { "status": 200, "json": { "activeJob": null, "lastJob": null, "suggestedName": "* ????-??-??" } } }
+      ]
+    },
+    {
+      "name": "refuses a password under 8 characters",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "seven77", "passwordAgain": "seven77", "destination": "{destination}" } },
+          "expect": { "status": 400, "json": { "error": "password-too-short" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses two passwords that differ",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse batterY", "destination": "{destination}" } },
+          "expect": { "status": 400, "json": { "error": "passwords-differ" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses a folder that isn't there",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{missing}" } },
+          "expect": { "status": 400, "json": { "error": "destination-not-found" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses a name Windows keeps for a device",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "con", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 400, "json": { "error": "name-invalid" } }
+        },
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Aux.old", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 400, "json": { "error": "name-invalid" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses a folder given without its drive",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "out" } },
+          "expect": { "status": 400, "json": { "error": "destination-not-whole" } }
+        }
+      ]
+    },
+    {
+      "name": "starts a Back up and follows its events to the end",
+      "backup": "finishes",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 200, "json": { "job": { "kind": "backup", "status": "running", "name": "Test PC" } } },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "until": { "job": { "status": "finished" } },
+          "expect": {
+            "status": 200,
+            "json": {
+              "job": { "id": "{job}", "status": "finished" },
+              "events": [
+                { "type": "job-started", "code": "backup-started" },
+                { "type": "step-started", "step": "catalog" },
+                { "type": "percent", "percent": 50 },
+                { "type": "item", "code": "backup-file" },
+                { "type": "job-finished", "ok": true, "code": "backup-made" }
+              ]
+            }
+          },
+          "save": { "next": "next" }
+        },
+        { "request": { "method": "GET", "path": "/api/jobs/{job}/events?since={next}" }, "expect": { "status": 200, "json": { "events": [] } } },
+        { "request": { "method": "GET", "path": "/api/state" }, "expect": { "status": 200, "json": { "activeJob": null, "lastJob": { "id": "{job}", "status": "finished" } } } }
+      ]
+    },
+    {
+      "name": "refuses a name a Backup in that folder already has",
+      "backup": "finishes",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        { "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" }, "until": { "job": { "status": "finished" } }, "expect": { "status": 200 } },
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Test PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 400, "json": { "error": "backup-exists" } }
+        }
+      ]
+    },
+    {
+      "name": "refuses a second Back up while one runs",
+      "backup": "waits",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Waiting PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Second PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 409, "json": { "error": "job-running" } }
+        },
+        { "request": { "method": "POST", "path": "/api/jobs/{job}/stop", "body": { "confirm": true } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "reconnects to a running Back up after the page goes away",
+      "backup": "waits",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Waiting PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "until": { "events": [ { "type": "step-started" } ] },
+          "expect": { "status": 200, "json": { "job": { "status": "running" } } }
+        },
+        { "request": { "method": "GET", "path": "/api/state" }, "expect": { "status": 200, "json": { "activeJob": { "id": "{job}", "kind": "backup", "status": "running" } } } },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "expect": { "status": 200, "json": { "job": { "status": "running" }, "events": [ { "type": "job-started" }, { "type": "step-started", "step": "catalog" } ] } }
+        },
+        { "request": { "method": "POST", "path": "/api/jobs/{job}/stop", "body": { "confirm": true } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "stops a Back up only when the Stop is confirmed, and clears what it left",
+      "backup": "waits",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Waiting PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}" } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "until": { "events": [ { "type": "step-started" } ] },
+          "expect": { "status": 200 },
+          "files": { "present": [ "{destination}/Waiting PC.hopover.7z" ] }
+        },
+        { "request": { "method": "POST", "path": "/api/jobs/{job}/stop", "body": {} }, "expect": { "status": 400, "json": { "error": "confirm-needed" } } },
+        { "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" }, "expect": { "status": 200, "json": { "job": { "status": "running" } } } },
+        {
+          "request": { "method": "POST", "path": "/api/jobs/{job}/stop", "body": { "confirm": true } },
+          "expect": { "status": 200, "json": { "job": { "id": "{job}", "status": "stopped" } } },
+          "files": { "absent": [ "{destination}/Waiting PC.hopover.7z" ] }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "expect": { "status": 200, "json": { "job": { "status": "stopped" }, "events": [ { "type": "job-started" }, { "type": "job-finished", "ok": false, "code": "job-stopped" } ] } }
+        },
+        { "request": { "method": "GET", "path": "/api/state" }, "expect": { "status": 200, "json": { "activeJob": null, "lastJob": { "id": "{job}", "status": "stopped" } } } }
+      ]
+    }
+  ]
+}
