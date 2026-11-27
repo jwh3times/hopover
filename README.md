@@ -119,7 +119,7 @@ Untick anything you don't want, or turn a whole step off, then click **Save plan
 
 Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.config/hopover/options.json`, or under `$XDG_CONFIG_HOME`). A `config.json` in the data folder is read as well, so a data folder set up before Options keeps working: each script starts from the defaults, applies `config.json`, then `options.json` over it key by key (one level deep for the sections), and its own parameters win over all of them. [config.example.json](config.example.json) lists every option. Every key is optional except `migrationRoot`.
 
-`options.json` sits on the Windows drive, which the reinstall erases. A Backup carries the Options it was made with (as its `data\config.json`), but until a restore reads them from there, keep them in the data folder's `config.json` (as in [Getting started](#getting-started)), which survives with the rest of your data folder.
+`options.json` sits on the Windows drive, which the reinstall erases. A Backup carries the Options it was made with (as its `data\config.json`), and `Restore.ps1 -Backup` reads them from there. To restore without a Backup, keep them in the data folder's `config.json` (as in [Getting started](#getting-started)), which survives with the rest of your data folder.
 
 | Key | Used by | Meaning |
 | --- | --- | --- |

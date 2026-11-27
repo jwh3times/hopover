@@ -29,6 +29,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 - Keep `*.sh` and `*.py` LF-only (`.gitattributes` enforces it).
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
+- `Restore.ps1` runs only the steps of its prompt's pass, and GitHub's Windows runners are elevated, so a test that runs it must pass from either prompt (`tests/Restore.Tests.ps1` restores `app-data`, which runs in both, from an extras item of the current pass).
 - Options (`options.json`, layered over a data folder's `config.json`) are read by `Get-Options` in `lib/Common.ps1` and `load_options` in `restore_linux.py`, with the same keys and the same merge rule; change both together, and their tests.
 - An app's catalog key is found the same way by `Resolve-CatalogKey` in `lib/Backup.ps1` and `Catalog.lookup` in `restore_linux.py` (package key, then alias, then pattern, then `windowsOnly`); change both together. The extras items that hold secrets (`$SecretExtras` in `lib/Backup.ps1`) are named by `Backup-Extras.ps1` and `catalog/app-data.json`: a new secret-holding item goes in that list, or an unencrypted Backup carries it.
 - A PSScriptAnalyzer rule is excluded in `PSScriptAnalyzerSettings.psd1` only with the reason beside it; a ruff rule likewise in `pyproject.toml`.
