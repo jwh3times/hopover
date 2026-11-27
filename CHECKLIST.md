@@ -59,7 +59,7 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
    gh repo clone <you>/hopover-private C:\dev\hopover\data
    ```
    Optional: `.\Show-RestorePlan.ps1` to check or change the plan. **Preview restore** shows what will happen.
-   With a Backup, give every `.\Restore.ps1` below `-Backup "<path>\<name>.hopover.7z"`: each run asks for its password, and they all share one unpacked copy, which you delete once the restore is finished (the run tells you where it is).
+   With a Backup, give every `.\Restore.ps1` below `-Backup "<path>\<name>.hopover.7z"`: each run asks for its password (if it has one), and they all share one unpacked copy, which you delete once the restore is finished (the run tells you where it is).
 3. **Elevated** PowerShell in the tool folder: `.\Restore.ps1`. This runs drivers, drive letters, machine preferences and Windows features, Chocolatey, machine env vars and hosts. Reboot if it asks.
 4. **Normal** PowerShell: `.\Restore.ps1`. This runs winget apps, preferences, env vars and PATH, git config, cloning repos, dev extras, dev packages, VS Code, Terminal, Claude Code, Codex, app data and Docker volumes.
 5. Work through the "Still to do by hand" list it prints: secrets from your password manager, `npm login`, sign-ins, skills, and the apps winget can't install.

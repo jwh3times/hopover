@@ -6,7 +6,7 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 
 ## Layout
 
-- Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, Options, helpers). `lib\Backup.ps1` is the Backup module (make, test, find), with the 7-Zip it uses pinned by SHA-256 in `lib\7zip.json`; its tests download that `7zr.exe` into Pester's `TestDrive` on every run, so they need the network.
+- Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, Options, helpers). `lib\Backup.ps1` is the Backup module (make, test, find, unpack), with the 7-Zip it uses pinned by SHA-256 in `lib\7zip.json`; its tests and `tests\Restore.Tests.ps1` download that `7zr.exe` into Pester's `TestDrive` on every run, so they need the network.
 - `ui\index.html` is the page `Show-RestorePlan.ps1` serves.
 - `catalog\` holds data, not code: `app-data.json` (app-data folders to back up), `linux-packages.json` (Windows app to Linux install methods), `linux-repos.json` (vendor repos, installer scripts, prerequisites).
 - `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.10+, standard library only), plus `tests\`.

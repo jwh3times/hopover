@@ -269,7 +269,7 @@ Rebuilds the PC from a Backup, or from the data folder and `<migrationRoot>`.
 .\Restore.ps1 -Backup "E:\Laptop 2026-11-27.hopover.7z" -DryRun
 ```
 
-With `-Backup` each run asks for the password once (or reads it from a pipe) and stops before unpacking anything if the password is wrong or a newer Hopover made the Backup ("This Backup was made by a newer Hopover; download the latest"). Then it unpacks the Backup to `%LOCALAPPDATA%\Hopover\restore\<Backup name>` and restores from there, with the plan the Backup carries and its Options (under this PC's own `options.json`, if it has one).
+With `-Backup` each run asks once for the password of an encrypted Backup (or reads it from a pipe) and stops before unpacking anything if the password is wrong or a newer Hopover made the Backup ("This Backup was made by a newer Hopover; download the latest"). Then it unpacks the Backup to `%LOCALAPPDATA%\Hopover\restore\<Backup name>` and restores from there, with the plan the Backup carries and its Options (under this PC's own `options.json`, if it has one).
 
 - **The unpacked copy** is reused by every later run of the same account, the elevated and normal passes included, instead of being unpacked again; a different Backup with the same name, or a copy an earlier run left half-done, is unpacked afresh. It holds the Backup's files unencrypted, passwords and keys included, so each run ends by saying where it is: delete it once the restore is finished. Hopover never replaces a folder there that it didn't unpack.
 - **`-DryRun`** changes nothing: with no copy to reuse it unpacks into a temporary folder and removes it at the end.
@@ -367,7 +367,7 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | --- | --- |
 | `*.ps1` | The Windows scripts above |
 | `lib\Common.ps1` | Shared helpers (data folder, Options) |
-| `lib\Backup.ps1`, `lib\7zip.json` | The Backup module (make, test and find Backups) and the pinned 7-Zip it uses |
+| `lib\Backup.ps1`, `lib\7zip.json` | The Backup module (make, test, find and unpack Backups) and the pinned 7-Zip it uses |
 | `lib\version.txt` | A placeholder that `git archive` fills with the tag, so a release zip records its version in each Backup's `hopover.json` (a clone asks `git describe` instead) |
 | `ui\index.html` | The page `Show-RestorePlan.ps1` serves |
 | `catalog\` | App-data locations and the Linux translation tables |
