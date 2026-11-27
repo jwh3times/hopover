@@ -119,13 +119,13 @@ Untick anything you don't want, or turn a whole step off, then click **Save plan
 
 Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.config/hopover/options.json`, or under `$XDG_CONFIG_HOME`). A `config.json` in the data folder is read as well, so a data folder set up before Options keeps working: each script starts from the defaults, applies `config.json`, then `options.json` over it key by key (one level deep for the sections), and its own parameters win over all of them. [config.example.json](config.example.json) lists every option. Every key is optional except `migrationRoot`.
 
-`options.json` sits on the Windows drive, which the reinstall erases. Until a Backup carries your Options with it, keep them in the data folder's `config.json` (as in [Getting started](#getting-started)), which survives with the rest of your data folder.
+`options.json` sits on the Windows drive, which the reinstall erases. A Backup carries the Options it was made with (as its `data\config.json`), but until a restore reads them from there, keep them in the data folder's `config.json` (as in [Getting started](#getting-started)), which survives with the rest of your data folder.
 
 | Key | Used by | Meaning |
 | --- | --- | --- |
 | `devRoot`, `repoDepth` | Export-Settings, Backup-Extras, Restore | Folder holding your git checkouts, and how deep to look for repos in it |
 | `useOnlyRepos` | Export-Settings, Backup-Extras | Repos you only use and never push; their local changes aren't reported or archived |
-| `migrationRoot` | Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\` |
+| `migrationRoot` | New-Backup, Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\`, and is where `New-Backup.ps1` saves a Backup unless told `-Destination` |
 | `keepDrives` | Test-WipeReady | Drive letters that survive the reinstall |
 | `wipedDrives` | none yet | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
 | `excludedTypeRoots`, `maxFileMB` | Backup-Extras | Folders to search for `.exe`/`.msi`/`.dll`/`.iso` and similar files that cloud backups usually skip; per-file size limit |
@@ -154,7 +154,7 @@ Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts belo
 .\New-Backup.ps1 -Destination E:\ -Name "Laptop before reinstall"
 ```
 
-- **Encrypted by default:** AES-256 with the file names hidden too. It asks for a password (at least 8 characters) twice; a forgotten password can't be recovered. A program can pipe the password in instead: `... | powershell -File .\New-Backup.ps1 ...`. The password reaches 7-Zip only on its standard input, never a command line. `-NoEncryption` makes a Backup anyone can open.
+- **Encrypted by default:** AES-256 with the file names hidden too. It asks for a password (at least 8 characters) twice; a forgotten password can't be recovered. A program can pipe the password in instead: `... | powershell -File .\New-Backup.ps1 ...`. The password reaches 7-Zip only on its standard input, never a command line. `-NoEncryption` makes a Backup anyone can open, so it leaves out the extras that hold passwords and keys (`dev-local-files`, your local `.env` and secret files, and `app-ssh`, your `.ssh` folder) and says so.
 - **Inside it:** the exports as a data folder (`data\`, with the Options it was made with as `data\config.json`, and your `restore-plan.json` and `NOTES.md` if you have them), the extras (`extras\`), the drivers (`drivers\`) and `hopover.json`, which records the format version, when and where the Backup was made, whether it's encrypted, and every app by its catalog key with its winget or Chocolatey id. Any 7-Zip opens it with the password.
 - **7-Zip:** 7-Zip's `7zr.exe`, pinned by version and SHA-256 in `lib\7zip.json`. It's downloaded to `%LOCALAPPDATA%\Hopover\bin` on first use, and a file whose hash differs is refused.
 - **Your data folder is only read.** The staging folder (under `%TEMP%`, or `-StagingDir`) is removed afterwards, and an existing Backup with the same name is never overwritten.

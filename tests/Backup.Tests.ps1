@@ -1,5 +1,6 @@
 # Pester 6 tests for lib\Backup.ps1, the Backup module (seam 1 of spec #12). They use the real,
-# pinned 7zr.exe, downloaded on first use like Hopover itself does, so they need the network once.
+# pinned 7zr.exe, downloaded into each run's TestDrive like Hopover downloads it, so every run
+# needs the network.
 
 BeforeAll {
     $root = Split-Path -Parent $PSScriptRoot
@@ -106,7 +107,9 @@ Describe 'hopover.json' {
         $staging = New-TestStaging
         $winget = @{ Sources = @(@{ SourceDetails = @{ Name = 'winget' }; Packages = @(
             @{ PackageIdentifier = 'Git.Git' }, @{ PackageIdentifier = 'Microsoft.DotNet.SDK.8' },
-            @{ PackageIdentifier = 'Microsoft.VCRedist.2015+.x64' }, @{ PackageIdentifier = 'Contoso.NotInCatalog' }) }) }
+            @{ PackageIdentifier = 'Microsoft.VCRedist.2015+.x64' }, @{ PackageIdentifier = 'Contoso.NotInCatalog' },
+            # The catalog's JetBrains.* pattern matches ids that start with JetBrains., not ones that contain it.
+            @{ PackageIdentifier = 'Contoso.JetBrains.Helper' }) }) }
         Set-Content -LiteralPath (Join-Path $staging 'data\winget-packages.json') -Value (ConvertTo-Json $winget -Depth 6) -Encoding UTF8
         Set-Content -LiteralPath (Join-Path $staging 'data\settings\dev\packages.json') -Value '{ "Choco": ["7zip", "contoso-tool"], "Npm": [] }' -Encoding UTF8
         $made = New-Backup -Source $staging -Destination (New-TestDestination) -Name 'manifest' -Password (New-TestPassword 'correct horse battery') -Captured 'catalog', 'settings' -SevenZip $SevenZip
@@ -131,15 +134,15 @@ Describe 'hopover.json' {
 
     It 'lists the apps by catalog key, with their winget or Chocolatey ids' {
         $apps = @($m.apps)
-        $apps.Count | Should -Be 6
+        $apps.Count | Should -Be 7
         ($apps | Where-Object winget -eq 'Git.Git').catalogKey | Should -Be 'Git.Git'
         ($apps | Where-Object winget -eq 'Microsoft.DotNet.SDK.8').catalogKey | Should -Be 'dotnet-sdk'
         ($apps | Where-Object choco -eq '7zip').catalogKey | Should -Be '7zip.7zip'
     }
 
     It 'lists apps the catalog does not know, and Windows-only ones, by their source id alone' {
-        $unknown = @($m.apps) | Where-Object { $_.winget -eq 'Contoso.NotInCatalog' -or $_.choco -eq 'contoso-tool' }
-        @($unknown).Count | Should -Be 2
+        $unknown = @($m.apps) | Where-Object { $_.winget -in 'Contoso.NotInCatalog', 'Contoso.JetBrains.Helper' -or $_.choco -eq 'contoso-tool' }
+        @($unknown).Count | Should -Be 3
         @($unknown | Where-Object { $_.PSObject.Properties.Name -contains 'catalogKey' }).Count | Should -Be 0
         $vc = @($m.apps) | Where-Object winget -eq 'Microsoft.VCRedist.2015+.x64'
         $vc.windowsOnly | Should -BeTrue
@@ -157,6 +160,24 @@ Describe 'hopover.json' {
         $unpacked = New-TestDestination
         & $SevenZip e "-o$unpacked" $made.Path 'hopover.json' | Out-Null
         @((Get-Content -LiteralPath (Join-Path $unpacked 'hopover.json') -Raw | ConvertFrom-Json).groups) | Should -Contain 'developer-tools'
+    }
+}
+
+Describe 'A Backup that 7-Zip fails to make' {
+    It 'leaves none of its pieces behind' {
+        # A stand-in 7-Zip that writes the first piece, then fails as 7-Zip does (exit 2).
+        $failing = Join-Path $TestDrive 'failing'
+        New-Item -ItemType Directory -Path $failing | Out-Null
+        $cmd = @(
+            '@echo off'
+            'for %%a in (%*) do if /i "%%~xa"==".7z" type nul >"%%~a.001"'
+            'exit /b 2'
+        )
+        Set-Content -LiteralPath (Join-Path $failing '7z.cmd') -Value $cmd -Encoding ASCII
+        $out = New-TestDestination
+        { New-Backup -Source (New-TestStaging) -Destination $out -Name 'broken' -Password (New-TestPassword 'correct horse battery') -SplitBytes 65536 -SevenZip (Join-Path $failing '7z.cmd') } |
+            Should -Throw "*couldn't make the Backup*"
+        @(Get-ChildItem -LiteralPath $out -File).Count | Should -Be 0
     }
 }
 
@@ -241,6 +262,9 @@ Describe 'Find-Backup' {
         [IO.File]::WriteAllBytes((Join-Path $tree 'F\Desktop.hopover.7z.001'), (New-Object byte[] 4000))
         [IO.File]::WriteAllBytes((Join-Path $tree 'F\Desktop.hopover.7z.002'), (New-Object byte[] 1500))
         [IO.File]::WriteAllBytes((Join-Path $tree 'F\photos.7z'), (New-Object byte[] 10))
+        # Beside the pieces, but not pieces of that Backup: a copy and another program's split archive.
+        [IO.File]::WriteAllBytes((Join-Path $tree 'F\Desktop.hopover.7z.bak'), (New-Object byte[] 300))
+        [IO.File]::WriteAllBytes((Join-Path $tree 'F\photos.7z.001'), (New-Object byte[] 10))
         # -Depth 2 reaches files two folders below a root, and no further.
         [IO.File]::WriteAllBytes((Join-Path $tree 'E\deep\a\At the edge.hopover.7z'), (New-Object byte[] 10))
         [IO.File]::WriteAllBytes((Join-Path $tree 'E\deep\a\b\Just too deep.hopover.7z'), (New-Object byte[] 10))
