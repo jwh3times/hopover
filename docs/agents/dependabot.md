@@ -5,10 +5,12 @@ and in the scheduled review. These facts apply to this repository only.
 
 ## Stack
 
-Hopover itself has no runtime dependencies: the Windows scripts are Windows PowerShell 5.1 and
-PowerShell 7 with built-in modules only, and `linux/restore_linux.py` uses Python's standard library
-on whatever `python3` the distro ships (3.10 and up). Dependabot updates only the development tools
-and the workflows' actions.
+Hopover itself has one runtime dependency: 7-Zip's `7zr.exe`, which `New-Backup.ps1` downloads on
+first use, pinned by version, URL and SHA-256 in `lib/7zip.json`. Dependabot does not track it: it
+moves by hand, with the new release asset's digest. Otherwise the Windows scripts are Windows
+PowerShell 5.1 and PowerShell 7 with built-in modules only, and `linux/restore_linux.py` uses
+Python's standard library on whatever `python3` the distro ships (3.10 and up). Dependabot updates
+only the development tools and the workflows' actions.
 
 - **uv, `/`:** `pyproject.toml` and `uv.lock` pin the dev group: `ruff` (lint and format) and
   `shellcheck-py` (the shellcheck binary). `python-minor-and-patch` groups minor and patch updates;

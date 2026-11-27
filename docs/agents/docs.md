@@ -35,7 +35,8 @@
   is learned that no check enforces, or `release.yml` changes.
 - `docs/agents/dependabot.md`: what reviewing a Dependabot pull request takes here, read by the
   `dependabot` skill. Update when `.github/dependabot.yml`, `pyproject.toml`'s dev group, a
-  workflow's toolchain pins or install steps, or the pinned PowerShell modules change.
+  workflow's toolchain pins or install steps, the pinned PowerShell modules or the pinned 7-Zip
+  (`lib/7zip.json`) change.
 - `docs/agents/test-proof.md`: how the `test-prover` skill runs one test on its own here. Update
   when a test runner, a test folder or a test command changes.
 - `.agents/skills/**`: installed skills, listed in `skills-lock.json`. `frozen`: a reinstall

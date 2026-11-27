@@ -1,0 +1,6 @@
+{
+  "_comment": "The 7-Zip that makes and opens Backups (docs/adr/0002-one-encrypted-backup-file.md): 7-Zip's public-domain 7zr.exe, pinned by version and SHA-256. Get-SevenZip in lib/Backup.ps1 downloads it on first use and refuses any file whose hash differs. To move to a newer 7-Zip, take the release asset's digest from https://github.com/ip7z/7zip/releases.",
+  "version": "26.06",
+  "url": "https://github.com/ip7z/7zip/releases/download/26.06/7zr.exe",
+  "sha256": "e80db2dad715a6c5adabe292d31ed54e11f4e9b99ca349827b50573b175891bc"
+}

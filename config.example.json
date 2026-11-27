@@ -9,7 +9,7 @@
   "_useOnlyRepos": "Repos (relative to devRoot) you only use, never push. Their local changes aren't reported or archived, e.g. \"tools\\\\some-upstream-project\".",
 
   "migrationRoot": "E:\\Hopover",
-  "_migrationRoot": "A folder on a drive that won't be wiped (an external drive is best). Backup-Extras.ps1 writes extras\\ here and Save-Drivers.ps1 writes drivers\\.",
+  "_migrationRoot": "A folder on a drive that won't be wiped (an external drive is best). Backup-Extras.ps1 writes extras\\ here, Save-Drivers.ps1 writes drivers\\, and New-Backup.ps1 saves a Backup here unless given -Destination.",
 
   "keepDrives": ["E"],
   "_keepDrives": "Drive letters that survive the reinstall. Test-WipeReady.ps1 checks they're connected and hold your recovery files.",

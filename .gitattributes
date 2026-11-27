@@ -2,6 +2,10 @@
 *.sh  text eol=lf
 *.py  text eol=lf
 
+# `git archive` of a tag writes the tag into lib/version.txt in place of its $Format:...$
+# placeholder, so the release zip knows its version (Get-HopoverVersion in lib/Backup.ps1).
+/lib/version.txt              export-subst
+
 # Left out of `git archive`, so the hopover-<version>.zip each GitHub Release carries (and GitHub's
 # own source archives) hold the tool and its docs, not the development and agent files.
 /.agents                      export-ignore
