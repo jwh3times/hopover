@@ -96,7 +96,10 @@ class LoadOptionsTests(unittest.TestCase):
             self.data / "config.json",
             {"devRoot": "D:\\code", "linux": {"aur": "never", "nodeMajor": 22}, "_comment": "x"},
         )
-        self.write(self.options_file, {"linux": {"aur": "auto", "_aur": "y"}, "$schema": "z"})
+        self.write(
+            self.options_file,
+            {"linux": {"aur": "auto", "_aur": "y", "$id": "w"}, "$schema": "z"},
+        )
         opt = restore_linux.load_options(self.data)
         self.assertEqual(opt["devRoot"], "D:\\code")
         self.assertEqual(opt["linux"], {"aur": "auto", "nodeMajor": 22})

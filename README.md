@@ -127,7 +127,7 @@ Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.c
 | `useOnlyRepos` | Export-Settings, Backup-Extras | Repos you only use and never push; their local changes aren't reported or archived |
 | `migrationRoot` | Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\` |
 | `keepDrives` | Test-WipeReady | Drive letters that survive the reinstall |
-| `wipedDrives` | not yet used (the coming Ready check) | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
+| `wipedDrives` | none yet | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
 | `excludedTypeRoots`, `maxFileMB` | Backup-Extras | Folders to search for `.exe`/`.msi`/`.dll`/`.iso` and similar files that cloud backups usually skip; per-file size limit |
 | `portableRoots` | Catalog-InstalledApps | Where to look for portable apps |
 | `appData.include` / `exclude` / `custom` | Backup-Extras | Optional app-data items to add, items to drop, and your own folders (see [catalog/app-data.json](catalog/app-data.json)) |
@@ -336,11 +336,11 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | Path | What |
 | --- | --- |
 | `*.ps1` | The Windows scripts above |
-| `lib\Common.ps1` | Shared helpers (data folder, config) |
+| `lib\Common.ps1` | Shared helpers (data folder, Options) |
 | `ui\index.html` | The page `Show-RestorePlan.ps1` serves |
 | `catalog\` | App-data locations and the Linux translation tables |
 | `linux\` | `restore-linux.sh`, `restore_linux.py`, and `tests\` |
-| `config.example.json` | Starting point for `data\config.json` |
+| `config.example.json` | Every option with its default; the starting point for `data\config.json` |
 | `CHECKLIST.md` | The step-by-step wipe and reinstall checklist |
 | `tests\` | Pester tests for the Windows scripts, and `Invoke-PowerShellChecks.ps1` (parse, lint, test) |
 | `pyproject.toml`, `uv.lock`, `PSScriptAnalyzerSettings.psd1` | Pinned lint and format tools for development (the tool itself needs none) |

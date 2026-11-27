@@ -34,7 +34,14 @@ Describe 'Get-Options' {
         $opt['repoDepth'] | Should -Be 3
         $opt['devRoot'] | Should -Be 'C:\dev'
         @($opt['wipedDrives']).Count | Should -Be 0
-        $opt['_file'] | Should -Be $optionsFile
+    }
+
+    It 'names the data folder''s config.json as the file to edit when neither exists, since it survives the wipe' {
+        (Get-Options $dir)['_file'] | Should -Be (Join-Path $dir 'config.json')
+    }
+
+    It 'names options.json as the file to edit when there is no data folder' {
+        (Get-Options '')['_file'] | Should -Be $optionsFile
     }
 
     It 'skips $schema and _comment keys, inside sections too' {

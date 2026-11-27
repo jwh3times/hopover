@@ -109,14 +109,15 @@ function Merge-OptionsFile($Options, [string]$File) {
 # Hopover's Options, in layers: the defaults, then the data folder's config.json (the layout
 # from before Options), then options.json in the per-user Hopover folder. A later layer wins key
 # by key, so a config.json key that options.json doesn't set still applies.
-# _file is the file to edit: options.json when it exists, else config.json when that does.
+# _file is the file to edit: options.json when it exists, else the data folder's config.json,
+# which survives the wipe with the data folder (options.json sits on the Windows drive).
 function Get-Options([string]$DataDir) {
     $opt = Get-ConfigDefaults
     $configFile  = if ($DataDir) { Join-Path $DataDir 'config.json' } else { '' }
     $optionsFile = Get-OptionsPath
     $hasConfig  = $configFile -and (Merge-OptionsFile $opt $configFile)
     $hasOptions = Merge-OptionsFile $opt $optionsFile
-    $opt['_file']   = if ($hasConfig -and -not $hasOptions) { $configFile } else { $optionsFile }
+    $opt['_file']   = if ($configFile -and -not $hasOptions) { $configFile } else { $optionsFile }
     $opt['_exists'] = [bool]($hasConfig -or $hasOptions)
     return $opt
 }

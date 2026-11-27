@@ -2006,7 +2006,7 @@ def main():
         help="folder holding the extras archive (default: look for <migrationRoot name>/extras on mounted drives)",
     )
     ap.add_argument(
-        "--dev-root", help="where to clone repos (default: config linux.devRoot, ~/dev)"
+        "--dev-root", help="where to clone repos (default: the linux.devRoot option, ~/dev)"
     )
     ap.add_argument("--steps", help="comma-separated steps to run (default: all; see --list)")
     ap.add_argument(
@@ -2021,13 +2021,13 @@ def main():
     )
     ap.add_argument(
         "--prefer",
-        help="install source order, e.g. vendor,distro,portable,flatpak (default: config linux.prefer)",
+        help="install source order, e.g. vendor,distro,portable,flatpak (default: the linux.prefer option)",
     )
     ap.add_argument("--no-flatpak", action="store_true", help="never use Flathub")
     ap.add_argument(
         "--aur",
         choices=["auto", "never"],
-        help="use an AUR helper (yay/paru) if one is installed (default: config linux.aur)",
+        help="use an AUR helper (yay/paru) if one is installed (default: the linux.aur option)",
     )
     ap.add_argument("--no-overwrite", action="store_true", help="leave existing config files alone")
     ap.add_argument(

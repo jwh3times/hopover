@@ -46,8 +46,8 @@
 - Scripts and their parameters in `README.md`: the `param()` blocks of the root `*.ps1` files and
   `restore-linux.sh --help`.
 - Restore steps in `README.md`: `STEPS` in `linux/restore_linux.py`.
-- Configuration in `README.md`: `config.example.json` and `Get-ConfigDefaults` in
-  `lib/Common.ps1`.
+- Configuration in `README.md`: `config.example.json`, and `Get-ConfigDefaults` and
+  `Get-Options` in `lib/Common.ps1` (where options are read from, and in what order).
 - CI jobs and their commands in `AGENTS.md` and `docs/agents/open-pr.md`:
   `.github/workflows/ci.yml`.
 - Dev tools in `docs/agents/dependabot.md`: `pyproject.toml` and `tests/Invoke-PowerShellChecks.ps1`.
