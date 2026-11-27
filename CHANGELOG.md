@@ -14,6 +14,13 @@ _`v0.0.0` marks the last commit before this changelog and has no section._
 
 No unreleased changes.
 
+## [0.4.1] - 2026-11-27
+
+### Changed
+
+- The README now says `Restore.ps1 -Backup` restores with the Options the Backup carries. Keeping
+  them in the data folder's `config.json` is needed only to restore without a Backup.
+
 ## [0.4.0] - 2026-11-27
 
 ### Added
