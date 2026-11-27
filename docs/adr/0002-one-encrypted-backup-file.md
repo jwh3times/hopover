@@ -29,7 +29,7 @@ JSON, or keep two things safe instead of one.
 ## Consequences
 
 - Encryption is on by default; turning it off takes a deliberate choice. A forgotten password can't
-  be recovered, so the user types it twice and the ready check has them type it again and tests the
+  be recovered, so the user types it twice and the Ready check has them type it again and tests the
   Backup where it was saved. The password reaches 7-Zip on standard input, never on a command line.
 - An encrypted Backup carries the user's passwords and keys (secret environment variables, tokens in
   settings files, SSH keys, Wi-Fi passwords) unless the user unticks them. Sign-in sessions and

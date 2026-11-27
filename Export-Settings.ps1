@@ -16,7 +16,7 @@
     Output:
         <data>\settings\  (override with -OutDir). The folder is rebuilt on
         every run; start with settings\README.md. dev root, repo depth and
-        use-only repos come from <data>\config.json; parameters override them.
+        use-only repos come from the Options; parameters override them.
 
     Skipped on purpose (credentials; sign in again on the new PC):
         ~\.claude\.credentials.json, ~\.codex\auth.json, ~\.codex\secrets,
@@ -49,7 +49,7 @@ $ErrorActionPreference = 'Continue'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
 $DataDir = Resolve-DataDir $DataDir
-$Config  = Get-MigrationConfig $DataDir
+$Config  = Get-Options $DataDir
 if (-not $DevRoot) { $DevRoot = Expand-ConfigPath $Config.devRoot }
 if (-not $PSBoundParameters.ContainsKey('RepoDepth')) { $RepoDepth = [int]$Config.repoDepth }
 if (-not $PSBoundParameters.ContainsKey('UseOnlyRepos')) { $UseOnlyRepos = @($Config.useOnlyRepos) }

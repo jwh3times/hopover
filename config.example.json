@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to data\\config.json and edit. Every key is optional except migrationRoot (needed by Backup-Extras.ps1, Save-Drivers.ps1 and Test-WipeReady.ps1). Paths can use %ENVVARS% and ~.",
+  "_comment": "Every Hopover option, with its default. Options live in %LOCALAPPDATA%\\Hopover\\options.json (on Linux, ~/.config/hopover/options.json); a config.json in the data folder is read too, and options.json wins key by key. Script parameters win over both. Every key is optional except migrationRoot (needed by Backup-Extras.ps1, Save-Drivers.ps1 and Test-WipeReady.ps1). Paths can use %ENVVARS% and ~.",
 
   "devRoot": "C:\\dev",
   "_devRoot": "Folder holding your git checkouts. Exported, checked for unpushed work, and re-cloned on the new PC.",
@@ -13,6 +13,9 @@
 
   "keepDrives": ["E"],
   "_keepDrives": "Drive letters that survive the reinstall. Test-WipeReady.ps1 checks they're connected and hold your recovery files.",
+
+  "wipedDrives": [],
+  "_wipedDrives": "Drive letters the reinstall will erase. The Windows drive always counts as wiped, listed or not.",
 
   "excludedTypeRoots": ["%USERPROFILE%\\Downloads"],
   "_excludedTypeRoots": "Folders on drives being wiped to search for files that cloud backups usually skip (.exe, .msi, .dll, .iso...). Leave out game libraries; they redownload.",

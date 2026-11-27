@@ -19,7 +19,7 @@ param(
     [int]$Port = 8765,
     # Data folder (default: $env:HOPOVER_DATA, else .\data).
     [string]$DataDir,
-    # Defaults: migrationRoot and devRoot from <data>\config.json.
+    # Defaults: migrationRoot and devRoot from the Options.
     [string]$MigrationRoot,
     [string]$DevRoot,
     [switch]$NoBrowser
@@ -30,9 +30,9 @@ $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyI
 $scriptDir = $scriptDir.TrimEnd('\')
 . (Join-Path $scriptDir 'lib\Common.ps1')
 $DataDir  = Resolve-DataDir $DataDir
-$Config   = Get-MigrationConfig $DataDir
+$Config   = Get-Options $DataDir
 if (-not $MigrationRoot) { $MigrationRoot = Expand-ConfigPath $Config.migrationRoot }
-if (-not $MigrationRoot) { $MigrationRoot = '(migrationRoot not set in config.json)' }
+if (-not $MigrationRoot) { $MigrationRoot = '(migrationRoot not set in the Options)' }
 if (-not $DevRoot) { $DevRoot = Expand-ConfigPath $Config.devRoot }
 $S        = Join-Path $DataDir 'settings'
 $Extras   = Join-Path $MigrationRoot 'extras'

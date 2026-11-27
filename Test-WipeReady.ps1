@@ -7,7 +7,7 @@
         powershell -ExecutionPolicy Bypass -File .\Test-WipeReady.ps1
 
     Checks:
-      - the cloud backup (Backblaze, when installed or set in config.json) has
+      - the cloud backup (Backblaze, when installed or set in the Options) has
         almost nothing left to upload, has scanned since the extras archive
         was written, and its service is running
       - Backup-Extras.ps1, Save-Drivers.ps1, Export-Settings.ps1 and
@@ -16,7 +16,7 @@
       - the data folder (and this tool, if you changed it) is committed and pushed
       - recovery files exist on a drive that isn't being wiped
       - a Windows installer USB is plugged in
-    and lists the things only you can confirm. Settings come from <data>\config.json.
+    and lists the things only you can confirm. Defaults come from the Options.
 #>
 
 [CmdletBinding(PositionalBinding = $false)]
@@ -44,7 +44,7 @@ $ErrorActionPreference = 'Continue'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
 $DataDir = Resolve-DataDir $DataDir
-$Config  = Get-MigrationConfig $DataDir
+$Config  = Get-Options $DataDir
 if (-not $MigrationRoot) { $MigrationRoot = Expand-ConfigPath $Config.migrationRoot }
 if (-not $PSBoundParameters.ContainsKey('KeepDrives')) { $KeepDrives = @($Config.keepDrives) }
 if (-not $PSBoundParameters.ContainsKey('MaxRemainingMB')) { $MaxRemainingMB = [int]$Config.backup.maxRemainingMB }
@@ -58,9 +58,9 @@ function Add-Result([string]$Status, [string]$Check, [string]$Detail) {
 }
 function Get-Age([datetime]$When) { [math]::Round(($now - $When).TotalHours, 1) }
 
-if (-not $Config['_exists']) { Add-Result 'WARN' 'Config' "No $($Config['_file']); using defaults. Copy config.example.json there and edit it." }
+if (-not $Config['_exists']) { Add-Result 'WARN' 'Options' "No $($Config['_file']); using defaults. config.example.json in the tool folder lists every option." }
 if (-not $MigrationRoot) {
-    Add-Result 'FAIL' 'Migration folder' 'Set migrationRoot in config.json: a folder on a drive that will not be wiped.'
+    Add-Result 'FAIL' 'Migration folder' "Set migrationRoot in $($Config['_file']): a folder on a drive that will not be wiped."
     $MigrationRoot = '(migrationRoot not set)'   # the checks below then report the archives as missing
 }
 
@@ -171,7 +171,7 @@ if ($toolGit -and ($toolGit.Dirty -or $toolGit.Unpushed)) {
 # ---------------------------------------------------------------------------
 # Drives and recovery material
 # ---------------------------------------------------------------------------
-if (-not $KeepDrives.Count) { Add-Result 'WARN' 'Keep drives' 'Set keepDrives in config.json (drive letters that survive the reinstall).' }
+if (-not $KeepDrives.Count) { Add-Result 'WARN' 'Keep drives' "Set keepDrives in $($Config['_file']) (drive letters that survive the reinstall)." }
 foreach ($k in $KeepDrives) {
     $vol = Get-Volume -DriveLetter $k -ErrorAction SilentlyContinue
     if (-not $vol) { Add-Result 'WARN' "Keep drive ${k}:" 'not connected'; continue }
@@ -185,7 +185,7 @@ $codes = @(foreach ($k in $KeepDrives) {
     Get-ChildItem -LiteralPath "${k}:\" -File -ErrorAction SilentlyContinue | Where-Object { $n = $_.Name; @($patterns | Where-Object { $n -like $_ }).Count }
 })
 if ($codes.Count) { Add-Result 'PASS' 'Recovery files off the wiped drives' (($codes | ForEach-Object FullName) -join ', ') }
-elseif ($KeepDrives.Count) { Add-Result 'WARN' 'Recovery files off the wiped drives' "Nothing matching $($patterns -join ', ') in the root of $(($KeepDrives | ForEach-Object { "${_}:" }) -join ', '). Copy your 2FA recovery codes somewhere that survives (or set recoveryFiles in config.json)." }
+elseif ($KeepDrives.Count) { Add-Result 'WARN' 'Recovery files off the wiped drives' "Nothing matching $($patterns -join ', ') in the root of $(($KeepDrives | ForEach-Object { "${_}:" }) -join ', '). Copy your 2FA recovery codes somewhere that survives (or set recoveryFiles in $($Config['_file']))." }
 
 $installer = @(Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveType -eq 'Removable' -and $_.DriveLetter } |
     Where-Object { (Test-Path "$($_.DriveLetter):\sources\install.wim") -or (Test-Path "$($_.DriveLetter):\sources\install.esd") -or (Test-Path "$($_.DriveLetter):\sources\install.swm") })

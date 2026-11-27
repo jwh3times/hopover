@@ -115,9 +115,11 @@ This opens a page in your browser that shows every exported item, step by step:
 
 Untick anything you don't want, or turn a whole step off, then click **Save plan**. That writes `restore-plan.json` in the data folder; commit and push it. **Preview restore** saves the plan and runs `Restore.ps1 -DryRun`. Without a plan file, everything is restored. The Linux restore follows the same item choices (an app you untick isn't installed on Linux either).
 
-## config.json
+## Options
 
-Lives in the data folder; start from [config.example.json](config.example.json). Every key is optional except `migrationRoot`.
+Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.config/hopover/options.json`, or under `$XDG_CONFIG_HOME`). A `config.json` in the data folder is read as well, so a data folder set up before Options keeps working: each script starts from the defaults, applies `config.json`, then `options.json` over it key by key (one level deep for the sections), and its own parameters win over all of them. [config.example.json](config.example.json) lists every option. Every key is optional except `migrationRoot`.
+
+`options.json` sits on the Windows drive, which the reinstall erases. Until a Backup carries your Options with it, keep them in the data folder's `config.json` (as in [Getting started](#getting-started)), which survives with the rest of your data folder.
 
 | Key | Used by | Meaning |
 | --- | --- | --- |
@@ -125,6 +127,7 @@ Lives in the data folder; start from [config.example.json](config.example.json).
 | `useOnlyRepos` | Export-Settings, Backup-Extras | Repos you only use and never push; their local changes aren't reported or archived |
 | `migrationRoot` | Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\` |
 | `keepDrives` | Test-WipeReady | Drive letters that survive the reinstall |
+| `wipedDrives` | not yet used (the coming Ready check) | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
 | `excludedTypeRoots`, `maxFileMB` | Backup-Extras | Folders to search for `.exe`/`.msi`/`.dll`/`.iso` and similar files that cloud backups usually skip; per-file size limit |
 | `portableRoots` | Catalog-InstalledApps | Where to look for portable apps |
 | `appData.include` / `exclude` / `custom` | Backup-Extras | Optional app-data items to add, items to drop, and your own folders (see [catalog/app-data.json](catalog/app-data.json)) |
@@ -140,7 +143,7 @@ Lives in the data folder; start from [config.example.json](config.example.json).
 
 ## Windows scripts
 
-All of them take `-DataDir`; settings come from `config.json` and parameters override them.
+All of them take `-DataDir`; settings come from the [Options](#options) and parameters override them.
 
 ### Catalog-InstalledApps.ps1 (old PC)
 
