@@ -14,6 +14,14 @@ _`v0.0.0` marks the last commit before this changelog and has no section._
 
 No unreleased changes.
 
+## [0.5.1] - 2026-11-27
+
+### Fixed
+
+- For contributors, the page API's job tests no longer fail at random. The stand-in Back up they
+  use leaves its staging copy and half-written Backup before it says its step has started, so a
+  test that waits for that event always finds them.
+
 ## [0.5.0] - 2026-11-27
 
 ### Added
