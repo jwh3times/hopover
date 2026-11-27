@@ -1,8 +1,15 @@
 <#
     Restore.ps1
-    Sets up the new PC from the data folder (settings\, winget export, plan)
-    and the migration drive (<migrationRoot>: extras archives and drivers).
-    Every step is safe to rerun.
+    Sets up the new PC from a Backup (-Backup <file>.hopover.7z, made by New-Backup.ps1), or from
+    the data folder (settings\, winget export, plan) and the migration drive (<migrationRoot>:
+    extras archives and drivers). Every step is safe to rerun.
+
+        powershell -ExecutionPolicy Bypass -File .\Restore.ps1 -Backup "E:\Laptop 2026-11-27.hopover.7z"
+
+    With -Backup it asks for the Backup's password (or reads it from a pipe), refuses a wrong one
+    or a Backup made by a newer Hopover before unpacking anything, then unpacks it to
+    %LOCALAPPDATA%\Hopover\restore\<Backup name> and restores from there. A rerun reuses that
+    copy. -DryRun unpacks it too, and changes nothing else.
 
     Steps that need admin run only from an elevated prompt; the rest run only
     from a normal prompt (so repos and config end up owned by you, not by
@@ -29,6 +36,8 @@
 
 [CmdletBinding(PositionalBinding = $false)]
 param(
+    # A Backup to restore from (<name>.hopover.7z, or a split one's .001), instead of -DataDir and -MigrationRoot.
+    [string]$Backup,
     [string[]]$Steps = @('all'),
     # Data folder (default: $env:HOPOVER_DATA, else .\data).
     [string]$DataDir,
@@ -47,6 +56,52 @@ $ErrorActionPreference = 'Continue'
 $Steps = @($Steps | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
+
+# From a Backup: check it opens and is one this Hopover can read, unpack it (or reuse the copy a
+# previous run unpacked), and restore from that copy as a data folder plus migration root. A dry
+# run with no copy to reuse unpacks into a temporary folder and removes it at the end: the copy
+# holds the Backup's files unencrypted.
+$dryRunCopy = $null
+$unpackedCopy = $null
+function Remove-DryRunCopy {
+    if ($script:dryRunCopy -and (Test-Path -LiteralPath $script:dryRunCopy)) { Remove-Item -LiteralPath $script:dryRunCopy -Recurse -Force -ErrorAction SilentlyContinue }
+}
+trap { Remove-DryRunCopy; break }
+if ($Backup -and -not $List) {
+    if ($DataDir -or $MigrationRoot) { Write-Host '-Backup restores from the Backup itself; leave out -DataDir and -MigrationRoot.' -ForegroundColor Red; exit 1 }
+    . (Join-Path $scriptDir 'lib\Backup.ps1')
+    try {
+        $sevenZip = Get-SevenZip
+        $backupPassword = $null
+        $checked = Read-BackupManifest -Path $Backup -SevenZip $sevenZip
+        if ($checked.Result -eq 'password-needed') {
+            $backupPassword = Read-BackupPassword "Password for $(Get-BackupName $Backup)"
+            $checked = Read-BackupManifest -Path $Backup -Password $backupPassword -SevenZip $sevenZip
+        }
+        if ($checked.Result -ne 'ok') { throw $checked.Message }
+        $madeOn = if ($checked.Manifest.created) { ([datetime]$checked.Manifest.created).ToLocalTime().ToString('yyyy-MM-dd HH:mm') } else { 'an unknown date' }
+        Write-Host "Backup: $Backup (made on $($checked.Manifest.computerName), $madeOn)" -ForegroundColor Cyan
+        $folder = Get-UnpackedBackup $Backup $checked
+        if ($folder) {
+            Write-Host "  already unpacked in $folder" -ForegroundColor Cyan
+        } elseif ($DryRun) {
+            $dryRunCopy = Join-Path ([IO.Path]::GetTempPath()) "hopover-dryrun-$PID"
+            $folder = (Expand-Backup -Path $Backup -Password $backupPassword -RestoreRoot $dryRunCopy -Checked $checked -SevenZip $sevenZip).Folder
+            Write-Host "  unpacked for this dry run to $folder (removed at the end)" -ForegroundColor Cyan
+        } else {
+            $folder = (Expand-Backup -Path $Backup -Password $backupPassword -Checked $checked -SevenZip $sevenZip).Folder
+            Write-Host "  unpacked to $folder" -ForegroundColor Cyan
+        }
+    } catch {
+        Remove-DryRunCopy
+        Write-Host "$($_.Exception.Message) Nothing was restored." -ForegroundColor Red
+        exit 1
+    }
+    $unpackedCopy = if ($dryRunCopy) { $null } else { $folder }
+    $DataDir = Join-Path $folder 'data'
+    $MigrationRoot = $folder
+}
+
 $DataDir  = Resolve-DataDir $DataDir
 $Config   = Get-Options $DataDir
 if (-not $MigrationRoot) { $MigrationRoot = Expand-ConfigPath $Config.migrationRoot }
@@ -571,3 +626,9 @@ if ($Manual.Count) {
     $Manual | Sort-Object -Unique | ForEach-Object { Write-Host "  [ ] $_" }
 }
 if (-not $DryRun) { Stop-Transcript | Out-Null; Write-Host "Log: $log" }
+Remove-DryRunCopy
+if ($unpackedCopy) {
+    Write-Host ''
+    Write-Host "The unpacked copy in $unpackedCopy holds this Backup's files unencrypted, passwords and keys included." -ForegroundColor Yellow
+    Write-Host "Your next runs reuse it. Once the restore is finished, delete it: Remove-Item -Recurse -LiteralPath '$unpackedCopy'" -ForegroundColor Yellow
+}

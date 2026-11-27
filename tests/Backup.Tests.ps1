@@ -176,6 +176,152 @@ Describe 'hopover.json' {
     }
 }
 
+Describe 'ConvertFrom-PipedPassword' {
+    It 'drops the BOM Windows PowerShell 5.1 puts in front of piped text on a UTF-8 console' {
+        $sec = ConvertFrom-PipedPassword ([string][char]0xFEFF + 'correct horse battery')
+        # Compare ordinally: culture-aware comparison (Should -BeExactly included) ignores U+FEFF.
+        $plain = (New-Object System.Net.NetworkCredential('', $sec)).Password
+        $plain.Length | Should -Be 21
+        [string]::Equals($plain, 'correct horse battery', [StringComparison]::Ordinal) | Should -BeTrue
+    }
+
+    It 'keeps every other character, and gives nothing for an empty line' {
+        $sec = ConvertFrom-PipedPassword (' p' + [char]0x00E4 + 'ss ')
+        (New-Object System.Net.NetworkCredential('', $sec)).Password | Should -BeExactly (' p' + [char]0x00E4 + 'ss ')
+        ConvertFrom-PipedPassword '' | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Expand-Backup' {
+    BeforeAll {
+        $pw = New-TestPassword 'correct horse battery'
+        $made = New-Backup -Source (New-TestStaging) -Destination (New-TestDestination) -Name 'Laptop 2026-11-27' -Password $pw -SevenZip $SevenZip
+    }
+    BeforeEach { $restoreRoot = New-TestDestination }
+
+    It 'unpacks a Backup into a folder named after it' {
+        $u = Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $u.Folder | Should -Be (Join-Path $restoreRoot 'Laptop 2026-11-27')
+        $u.Reused | Should -BeFalse
+        Join-Path $u.Folder 'data\settings\windows\hosts' | Should -Exist
+        Join-Path $u.Folder 'extras\manifest.json' | Should -Exist
+        $u.Manifest.formatVersion | Should -Be 1
+    }
+
+    It 'reuses the unpacked copy on a rerun instead of unpacking again' {
+        $first = Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        Remove-Item -LiteralPath (Join-Path $first.Folder 'data\settings\windows\hosts')
+        $again = Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $again.Reused | Should -BeTrue
+        $again.Folder | Should -Be $first.Folder
+        Join-Path $again.Folder 'data\settings\windows\hosts' | Should -Not -Exist
+    }
+
+    It 'stops on a wrong password, in plain words, before unpacking anything' {
+        { Expand-Backup -Path $made.Path -Password (New-TestPassword 'wrong horse battery') -RestoreRoot $restoreRoot -SevenZip $SevenZip } |
+            Should -Throw "That password doesn't open the Backup ""Laptop 2026-11-27""."
+        @(Get-ChildItem -LiteralPath $restoreRoot).Count | Should -Be 0
+    }
+
+    It 'says an encrypted Backup needs its password' {
+        (Read-BackupManifest -Path $made.Path -SevenZip $SevenZip).Result | Should -Be 'password-needed'
+    }
+
+    It 'refuses a Backup made by a newer Hopover, before unpacking anything' {
+        # A Backup from the future: formatVersion 2, packed the way any 7-Zip would.
+        $future = New-TestStaging
+        Set-Content -LiteralPath (Join-Path $future 'hopover.json') -Value '{ "formatVersion": 2, "computerName": "X", "created": "2030-01-01T00:00:00Z" }' -Encoding ASCII
+        $file = Join-Path (New-TestDestination) 'Future.hopover.7z'
+        Push-Location $future
+        try { & $SevenZip a -t7z '-pcorrect horse battery' -mhe=on $file * | Out-Null } finally { Pop-Location }
+        (Read-BackupManifest -Path $file -Password $pw -SevenZip $SevenZip).Result | Should -Be 'newer'
+        { Expand-Backup -Path $file -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip } |
+            Should -Throw 'This Backup was made by a newer Hopover; download the latest.'
+        @(Get-ChildItem -LiteralPath $restoreRoot).Count | Should -Be 0
+    }
+
+    It 'tells two Backups apart even when they were made in the same second' {
+        # Packed by hand: the same PC and name, created 0.6 s apart.
+        $out = New-TestDestination
+        foreach ($pair in @(@('a', '2026-11-27T10:00:00.1000000Z'), @('b', '2026-11-27T10:00:00.7000000Z'))) {
+            $s = New-TestStaging
+            Set-Content -LiteralPath (Join-Path $s 'hopover.json') -Value "{ ""formatVersion"": 1, ""computerName"": ""PC"", ""created"": ""$($pair[1])"" }" -Encoding ASCII
+            Set-Content -LiteralPath (Join-Path $s "data\$($pair[0]).txt") -Value $pair[0] -Encoding ASCII
+            New-Item -ItemType Directory -Path (Join-Path $out $pair[0]) | Out-Null
+            Push-Location $s
+            try { & $SevenZip a -t7z '-pcorrect horse battery' -mhe=on (Join-Path $out "$($pair[0])\Twin.hopover.7z") * | Out-Null } finally { Pop-Location }
+        }
+        $null = Expand-Backup -Path (Join-Path $out 'a\Twin.hopover.7z') -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $u = Expand-Backup -Path (Join-Path $out 'b\Twin.hopover.7z') -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $u.Reused | Should -BeFalse
+        Join-Path $u.Folder 'data\b.txt' | Should -Exist
+        Join-Path $u.Folder 'data\a.txt' | Should -Not -Exist
+    }
+
+    It 'never replaces a folder of that name that Hopover did not unpack, even one holding a hopover.json' {
+        $mine = New-Item -ItemType Directory -Path (Join-Path $restoreRoot 'Laptop 2026-11-27') -Force
+        Set-Content -LiteralPath (Join-Path $mine 'keep.txt') -Value 'mine' -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $mine 'hopover.json') -Value '{}' -Encoding ASCII
+        { Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip } | Should -Throw '*in the way*'
+        Join-Path $mine 'keep.txt' | Should -Exist
+    }
+
+    It 'unpacks again over its own copy that an earlier run left half-done' {
+        $first = Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        # As if that unpack had been stopped part-way: Hopover's marker, not yet marked complete.
+        $marker = Join-Path $first.Folder '.hopover-unpacked.json'
+        $m = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+        $m.complete = $false
+        Set-Content -LiteralPath $marker -Value (ConvertTo-Json $m) -Encoding UTF8
+        Remove-Item -LiteralPath (Join-Path $first.Folder 'data\settings\windows\hosts')
+        $again = Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $again.Reused | Should -BeFalse
+        Join-Path $again.Folder 'data\settings\windows\hosts' | Should -Exist
+    }
+
+    It 'keeps the folder inside the restore root whatever the Backup file is called' {
+        $odd = Join-Path (New-TestDestination) '..hopover.7z'
+        Copy-Item -LiteralPath $made.Path -Destination $odd
+        $u = Expand-Backup -Path $odd -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        (Split-Path -Parent $u.Folder) | Should -Be $restoreRoot
+        (Split-Path -Leaf $u.Folder) | Should -Be 'Backup'
+    }
+
+    It 'calls a hopover.json whose formatVersion is not a number damaged' {
+        $s = New-TestStaging
+        Set-Content -LiteralPath (Join-Path $s 'hopover.json') -Value '{ "formatVersion": "two" }' -Encoding ASCII
+        $file = Join-Path (New-TestDestination) 'Odd.hopover.7z'
+        Push-Location $s
+        try { & $SevenZip a -t7z $file * | Out-Null } finally { Pop-Location }
+        (Read-BackupManifest -Path $file -SevenZip $SevenZip).Result | Should -Be 'damaged'
+    }
+
+    It 'removes what it unpacked when 7-Zip fails part-way' {
+        # A stand-in 7-Zip that reads hopover.json like the real one, then fails to unpack.
+        $failing = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $failing | Out-Null
+        Set-Content -LiteralPath (Join-Path $failing 'hopover.json') -Value '{ "formatVersion": 1, "computerName": "PC", "created": "2026-11-27T10:00:00Z" }' -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $failing '7z.cmd') -Encoding ASCII -Value @(
+            '@echo off'
+            'if "%1"=="e" ( type "%~dp0hopover.json" & exit /b 0 )'
+            'exit /b 2'
+        )
+        { Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip (Join-Path $failing '7z.cmd') } | Should -Throw "*couldn't unpack*"
+        @(Get-ChildItem -LiteralPath $restoreRoot).Count | Should -Be 0
+    }
+
+    It 'unpacks afresh when a different Backup with the same name comes along' {
+        $first = Expand-Backup -Path $made.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $other = New-TestStaging
+        Set-Content -LiteralPath (Join-Path $other 'data\NOTES.md') -Value 'newer Backup' -Encoding UTF8
+        $newer = New-Backup -Source $other -Destination (New-TestDestination) -Name 'Laptop 2026-11-27' -Password $pw -SevenZip $SevenZip
+        $u = Expand-Backup -Path $newer.Path -Password $pw -RestoreRoot $restoreRoot -SevenZip $SevenZip
+        $u.Reused | Should -BeFalse
+        $u.Folder | Should -Be $first.Folder
+        Join-Path $u.Folder 'data\NOTES.md' | Should -Exist
+    }
+}
+
 Describe 'A Backup that 7-Zip fails to make' {
     It 'leaves none of its pieces behind' {
         # A stand-in 7-Zip that writes the first piece, then fails as 7-Zip does (exit 2).

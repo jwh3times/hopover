@@ -65,8 +65,7 @@ if ($NoEncryption) {
     Write-Host 'This Backup will not be protected: anyone who gets the file can read everything in it.' -ForegroundColor Yellow
 } else {
     if ([Console]::IsInputRedirected) {
-        $text = [Console]::In.ReadLine()
-        $password = if ($text) { (New-Object System.Net.NetworkCredential('', $text)).SecurePassword } else { $null }
+        $password = ConvertFrom-PipedPassword ([Console]::In.ReadLine())
     } else {
         Write-Host 'Choose a password for the Backup. It cannot be recovered if you forget it, so keep it in your password manager.' -ForegroundColor Cyan
         $password = Read-Host 'Password' -AsSecureString
