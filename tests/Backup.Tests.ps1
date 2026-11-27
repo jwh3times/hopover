@@ -61,6 +61,19 @@ Describe 'New-Backup and Test-Backup' {
         $LASTEXITCODE | Should -Be 0
     }
 
+    It 'gives 7-Zip exactly the password typed when the console is UTF-8' {
+        # Windows PowerShell 5.1's .NET writes the console input encoding's preamble into a
+        # started process's standard input: under code page 65001, a UTF-8 BOM that 7-Zip would
+        # take as the start of the password. GitHub's Windows runners have such a console.
+        $saved = [Console]::InputEncoding
+        try { [Console]::InputEncoding = [Text.Encoding]::UTF8 } catch { Set-ItResult -Skipped -Because 'this host has no console whose encoding can be set'; return }
+        try {
+            $made = New-Backup -Source (New-TestStaging) -Destination (New-TestDestination) -Name 'utf8 console' -Password (New-TestPassword 'correct horse battery') -SevenZip $SevenZip
+        } finally { [Console]::InputEncoding = $saved }
+        & $SevenZip t '-pcorrect horse battery' $made.Path | Out-Null
+        $LASTEXITCODE | Should -Be 0
+    }
+
     It 'refuses to make a Backup with no password unless -NoEncryption says so' {
         { New-Backup -Source (New-TestStaging) -Destination (New-TestDestination) -Name 'nopw' -SevenZip $SevenZip } | Should -Throw '*password*'
     }

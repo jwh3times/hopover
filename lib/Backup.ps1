@@ -60,7 +60,20 @@ function Invoke-SevenZip([string]$SevenZip, [string[]]$Arguments, [securestring]
     $psi.StandardOutputEncoding = $Utf8
     $psi.StandardErrorEncoding = $Utf8
     if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
-    $p = [System.Diagnostics.Process]::Start($psi)
+    # Nothing but the password may reach 7-Zip's input. PowerShell 7's .NET takes the encoding to
+    # write it in. Windows PowerShell 5.1's .NET writes the console input encoding's preamble the
+    # moment the process starts: under code page 65001 a UTF-8 BOM, which 7-Zip would take as the
+    # start of the password. So for the start only, make that encoding the same code page without
+    # a preamble.
+    $consoleEncoding = $null
+    if ($psi.PSObject.Properties.Name -contains 'StandardInputEncoding') {
+        $psi.StandardInputEncoding = $Utf8
+    } elseif ([Console]::InputEncoding.GetPreamble().Length) {
+        $consoleEncoding = [Console]::InputEncoding
+        [Console]::InputEncoding = $Utf8
+    }
+    try { $p = [System.Diagnostics.Process]::Start($psi) }
+    finally { if ($consoleEncoding) { [Console]::InputEncoding = $consoleEncoding } }
     try {
         $stdout = $p.StandardOutput.ReadToEndAsync()
         $stderr = $p.StandardError.ReadToEndAsync()
