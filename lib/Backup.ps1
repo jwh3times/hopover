@@ -114,15 +114,24 @@ function Test-SecretExtras([string]$Source) {
     return [bool](@(@($m.Items) | Where-Object { $SecretExtras -contains $_.Name -and $_.File }).Count)
 }
 
-# The version of Hopover running: git describe in a clone, else the VERSION file's release line.
-function Get-HopoverVersion {
-    if (Test-Path -LiteralPath (Join-Path $ToolRoot '.git')) {
+# The version of Hopover running, in the form a tag has (v0.2.6). The release zip is `git archive`
+# of the tag, which fills lib\version.txt's $Format:...$ placeholder with the tag (export-subst in
+# .gitattributes). A clone keeps the placeholder, so git describe answers (v0.2.6-3-g1a2b3c4 past
+# the tag). With neither, the VERSION file's release line is the best there is.
+function Get-HopoverVersion([string]$Root = $ToolRoot) {
+    $stamped = Join-Path $Root 'lib\version.txt'
+    if (Test-Path -LiteralPath $stamped) {
+        $v = [string](Get-Content -LiteralPath $stamped -Raw)
+        $v = $v.Trim()
+        if ($v -and -not $v.StartsWith('$Format:')) { return $v }
+    }
+    if (Test-Path -LiteralPath (Join-Path $Root '.git')) {
         # In Windows PowerShell 5.1 a native command's stderr is an error under ErrorAction Stop,
         # even when redirected: a git that complains must not stop a Backup.
-        try { $v = git -C $ToolRoot describe --tags --always 2>$null } catch { $v = $null }
+        try { $v = git -C $Root describe --tags --always 2>$null } catch { $v = $null }
         if ($LASTEXITCODE -eq 0 -and $v) { return [string]$v }
     }
-    $file = Join-Path $ToolRoot 'VERSION'
+    $file = Join-Path $Root 'VERSION'
     if (Test-Path -LiteralPath $file) { return (Get-Content -LiteralPath $file -Raw).Trim() }
     return 'unknown'
 }

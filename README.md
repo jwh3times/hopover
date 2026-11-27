@@ -355,6 +355,7 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | `*.ps1` | The Windows scripts above |
 | `lib\Common.ps1` | Shared helpers (data folder, Options) |
 | `lib\Backup.ps1`, `lib\7zip.json` | The Backup module (make, test and find Backups) and the pinned 7-Zip it uses |
+| `lib\version.txt` | A placeholder that `git archive` fills with the tag, so a release zip records its version in each Backup's `hopover.json` (a clone asks `git describe` instead) |
 | `ui\index.html` | The page `Show-RestorePlan.ps1` serves |
 | `catalog\` | App-data locations and the Linux translation tables |
 | `linux\` | `restore-linux.sh`, `restore_linux.py`, and `tests\` |

@@ -261,6 +261,37 @@ Describe 'Find-Backup' {
     }
 }
 
+Describe 'Get-HopoverVersion' {
+    # The release zip is `git archive` of the tag, which fills lib\version.txt's $Format:...$
+    # placeholder with the tag. A clone keeps the placeholder and asks git instead.
+    BeforeEach {
+        $tool = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path (Join-Path $tool 'lib') | Out-Null
+        Set-Content -LiteralPath (Join-Path $tool 'VERSION') -Value '0.2.0' -Encoding ASCII
+    }
+
+    It 'reads the version git archive wrote into lib\version.txt' {
+        Set-Content -LiteralPath (Join-Path $tool 'lib\version.txt') -Value 'v0.2.6' -Encoding ASCII
+        Get-HopoverVersion -Root $tool | Should -BeExactly 'v0.2.6'
+    }
+
+    It 'falls back to the VERSION line when the placeholder was never filled and there is no git' {
+        Set-Content -LiteralPath (Join-Path $tool 'lib\version.txt') -Value '$Format:%(describe:tags=true)$' -Encoding ASCII
+        Get-HopoverVersion -Root $tool | Should -BeExactly '0.2.0'
+    }
+
+    It 'falls back when git archive filled the placeholder with nothing (no tag to describe)' {
+        Set-Content -LiteralPath (Join-Path $tool 'lib\version.txt') -Value '' -Encoding ASCII
+        Get-HopoverVersion -Root $tool | Should -BeExactly '0.2.0'
+    }
+
+    It 'has git fill lib\version.txt when the release zip is made' {
+        Push-Location $root
+        try { (git check-attr export-subst -- lib/version.txt) | Should -BeExactly 'lib/version.txt: export-subst: set' } finally { Pop-Location }
+        (Get-Content -LiteralPath (Join-Path $root 'lib\version.txt') -Raw).Trim() | Should -BeExactly '$Format:%(describe:tags=true)$'
+    }
+}
+
 Describe 'Get-SevenZip' {
     BeforeEach {
         $cache = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
