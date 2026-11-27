@@ -72,7 +72,7 @@ Slower checks, run by hand when a change touches what they cover:
 # Linux catalog: structure, vendor URLs, GitHub asset patterns (reaches the network)
 powershell -File linux\tests\Test-LinuxCatalog.ps1
 
-# Linux restore in Docker (dry run on six distros; -Install -Only <ids> really installs)
+# Linux restore in Docker (dry run on eight images of six distros; -Install -Only <ids> really installs)
 powershell -File linux\tests\Test-LinuxRestore.ps1
 ```
 

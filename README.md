@@ -103,7 +103,7 @@ linux/restore-linux.sh --backup "/media/$USER/USB/Laptop 2026-11-27.hopover.7z" 
 linux/restore-linux.sh --backup "/media/$USER/USB/Laptop 2026-11-27.hopover.7z"             # do it; asks for sudo when needed
 ```
 
-Run it as your normal user, not with sudo. It asks for the Backup's password once per run. It ends with a report of what was installed, what has no Linux version (with alternatives), and what's left to do by hand. See [Linux restore](#linux-restore) below.
+Run it as your normal user, not with sudo. It asks once per run for the password of an encrypted Backup. It ends with a report of what was installed, what has no Linux version (with alternatives), and what's left to do by hand. See [Linux restore](#linux-restore) below.
 
 Without a Backup, it restores from a data folder and the migration drive as before: clone your companion repo to `~/hopover/data` (or pass `--data <folder>` for a data folder elsewhere), and with the migration drive mounted it finds the extras archive by itself (or pass `--extras <folder>`).
 
@@ -358,11 +358,11 @@ The Linux report lists apps that aren't in the catalog yet. To add one, give it 
 
 ```powershell
 powershell -File linux\tests\Test-LinuxCatalog.ps1                 # structure, vendor URLs, GitHub asset patterns
-powershell -File linux\tests\Test-LinuxRestore.ps1                 # dry run in Docker on six distros
+powershell -File linux\tests\Test-LinuxRestore.ps1                 # dry run in Docker on eight images of six distros
 powershell -File linux\tests\Test-LinuxRestore.ps1 -Install -Only <id>   # really install it in each container
 ```
 
-`Test-LinuxRestore.ps1` needs Docker Desktop. It restores a small fixture Backup it makes with the Backup module, so each container also shows the bootstrap installing a 7-Zip that opens it; `-Backup <file>` restores one of yours instead, and `-DataDir <folder>` a data folder. Its containers run as root, so AUR installs are skipped there (AUR helpers refuse root), and Flatpak and systemd steps only print what they'd do.
+`Test-LinuxRestore.ps1` needs Docker Desktop and the network. It restores a small fixture Backup it makes with the Backup module, so each container also shows the bootstrap installing a 7-Zip that opens it; `-Backup <file>` restores one of yours instead, and `-DataDir <folder>` a data folder. Its containers run as root, so AUR installs are skipped there (AUR helpers refuse root), and Flatpak and systemd steps only print what they'd do.
 
 ## What isn't covered
 
