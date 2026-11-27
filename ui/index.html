@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Restore Plan</title>
+<title>Hopover</title>
 <style>
 :root {
   --bg: #f6f6f4; --panel: #ffffff; --text: #1c1c1e; --muted: #6a6a70; --faint: #9a9aa0;
@@ -114,6 +114,33 @@ table.summary tr.link:hover td { background: var(--hover); }
 .toast.err { background: var(--danger); color: #fff; }
 .loading { padding: 40px; color: var(--muted); text-align: center; }
 
+/* home: Back up, Check I'm ready, Restore */
+.home { max-width: 860px; margin: 0 auto; padding: 28px 24px 60px; }
+.home h2 { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 18px 0; }
+.card { text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; cursor: pointer; }
+.card:hover { border-color: var(--accent); }
+.card strong { display: block; font-size: 17px; margin-bottom: 6px; }
+.card span { color: var(--muted); }
+.form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+.field { margin: 0 0 16px; }
+.field > label { display: block; font-weight: 600; margin-bottom: 4px; }
+.field .hint { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.field input[type=text], .field input[type=password] { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row input[type=text], .row input[type=password] { flex: 1; min-width: 160px; }
+.warn { background: var(--differs-bg); color: var(--differs); border-radius: 8px; padding: 9px 12px; margin: 10px 0; }
+.error { background: var(--danger); color: #fff; border-radius: 8px; padding: 9px 12px; margin: 10px 0; }
+.ok-box { background: var(--same-bg); color: var(--same); border-radius: 8px; padding: 9px 12px; margin: 10px 0; overflow-wrap: anywhere; }
+.bar { height: 10px; background: var(--hover); border-radius: 5px; overflow: hidden; margin: 14px 0; }
+.bar > div { height: 100%; background: var(--accent); transition: width .4s; }
+.events { list-style: none; padding: 0; margin: 10px 0; }
+.events li { padding: 5px 0; border-top: 1px solid var(--border); display: flex; gap: 10px; overflow-wrap: anywhere; }
+.events li:first-child { border-top: 0; }
+.events .mark { flex: none; width: 1.2em; text-align: center; }
+.events .note-line { color: var(--differs); }
+.buttons { display: flex; gap: 10px; margin-top: 14px; }
+
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
   nav { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -123,21 +150,25 @@ table.summary tr.link:hover td { background: var(--hover); }
 </head>
 <body>
 <header>
-  <h1>Restore plan</h1>
+  <h1 id="heading">Restore plan</h1>
   <div class="meta" id="meta">Loading…</div>
-  <span class="dirty" id="dirty" hidden>Unsaved changes</span>
-  <button class="btn" id="btnRefresh" title="Re-read the exports and this PC's current state">Refresh</button>
-  <button class="btn" id="btnPreview" title="Save, then run Restore.ps1 -DryRun">Preview restore</button>
-  <button class="btn primary" id="btnSave">Save plan</button>
-  <button class="btn" id="btnQuit" title="Stop Show-RestorePlan.ps1">Quit</button>
+  <span class="dirty plan-only" id="dirty" hidden>Unsaved changes</span>
+  <button class="btn plan-only" id="btnRefresh" title="Re-read the exports and this PC's current state">Refresh</button>
+  <button class="btn plan-only" id="btnPreview" title="Save, then run Restore.ps1 -DryRun">Preview restore</button>
+  <button class="btn primary plan-only" id="btnSave">Save plan</button>
+  <button class="btn plan-only" id="btnQuit" title="Stop Show-RestorePlan.ps1">Quit</button>
 </header>
-<div class="layout">
+<div class="layout" id="planView">
   <nav id="nav"></nav>
   <main id="main"><div class="loading">Reading the exports…</div></main>
 </div>
+<div id="homeView" hidden></div>
 
 <script>
-const TOKEN = '__TOKEN__';
+// This run's token: written in by Show-RestorePlan.ps1, or (Hopover.ps1) in the address it opened.
+const TOKEN = '__TOKEN__' || new URLSearchParams(location.hash.slice(1)).get('token') || '';
+// The view the server starts the page on: 'home' (Hopover.ps1) or 'plan' (Show-RestorePlan.ps1).
+const START = '__START__';
 const STATUS_TEXT = { same: 'already here', differs: 'differs here', new: 'not here yet', waiting: "can't yet" };
 const STATUS_HELP = {
   same: 'This PC already matches the export',
@@ -169,10 +200,16 @@ function el(tag, attrs, ...kids) {
 }
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { 'X-Token': TOKEN, ...(opts.headers || {}) } });
+  if (r.status === 403 && START === 'home') { const err = new Error(t('no-token')); err.code = 'no-token'; throw err; }
   if (!r.ok) {
-    let msg = await r.text();
-    try { msg = JSON.parse(msg).error || msg; } catch (_) {}
-    throw new Error(msg || r.statusText);
+    let msg = await r.text(), code = null;
+    try {
+      const b = JSON.parse(msg);
+      if (b.error && MSG[b.error]) { code = b.error; msg = t(b.error, b.details); } else msg = b.error || msg;
+    } catch (_) {}
+    const err = new Error(msg || r.statusText);
+    err.code = code;
+    throw err;
   }
   return r;
 }
@@ -519,7 +556,279 @@ document.getElementById('btnQuit').onclick = async () => {
 };
 window.addEventListener('beforeunload', e => { if (D && planJson() !== savedSnapshot) { e.preventDefault(); e.returnValue = ''; } });
 
-load(false).catch(e => { document.getElementById('main').replaceChildren(el('div', { class: 'note' }, 'Could not load: ' + e.message)); });
+// ---------- messages ----------
+// Every message the page shows for a job or the API, in one English table: scripts and the server
+// send a code and its details, and the page words them here.
+const size = b => b == null ? '' : b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : b < 1024 ** 3 ? `${(b / 1024 ** 2).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(2)} GB`;
+const MSG = {
+  // what a Back up reports
+  'backup-started': d => `Backing up to ${d.destination}.`,
+  'backup-made': d => `Backup made: ${d.path} (${size(d.bytes)}${d.pieces > 1 ? `, in ${d.pieces} pieces` : ''}).` + (d.encrypted ? ' It is encrypted: without its password nobody can open it, including you.' : ''),
+  'backup-failed': d => `The Backup wasn't made: ${d.reason}`,
+  'backup-file': d => `${d.path} (${size(d.bytes)})`,
+  'drivers-need-admin': () => 'Drivers were left out: saving them needs administrator rights, which Hopover will ask for in a later version. To include them now, run New-Backup.ps1 from PowerShell opened as administrator.',
+  'step-problem': d => `This step reported a problem (exit code ${d.exitCode}), so the Backup may be missing some of it. Hopover's window shows the details.`,
+  'left-out-secrets': d => `Left out because this Backup isn't encrypted (they hold passwords and keys): ${(d.items || []).join(', ')}.`,
+  'only-some-steps': d => `This Backup holds only: ${(d.captured || []).join(', ') || 'Hopover\'s Options'}.`,
+  'staging-not-removed': d => `Couldn't remove the working copy in ${d.path}. It holds an unencrypted copy of everything in the Backup: delete it yourself.`,
+  // how a job ended without finishing
+  // (the page adds the job's kind to their details)
+  'job-stopped': d => `Stopped${d.kind === 'backup' ? '. No Backup was made, and' : ', and'} what it had done so far was removed.`,
+  'job-ended': d => `The ${t('kind-' + d.kind)} ended unexpectedly (exit code ${d.exitCode})${d.kind === 'backup' ? ', so no Backup was made' : ''}. Hopover's window shows why.`,
+  'job-interrupted': d => `Hopover was closed while this was running, so it stopped${d.kind === 'backup' ? '. No Backup was made, unless it had finished packing it' : ''}.`,
+  // the API's refusals
+  'job-running': () => 'Hopover is already doing something. Wait for it to finish, or stop it first.',
+  'name-missing': () => 'Give the Backup a name.',
+  'name-invalid': () => 'A Backup\'s name can\'t contain any of \\ / : * ? " < > |, or start or end with a dot.',
+  'destination-missing': () => 'Choose where to save the Backup.',
+  'destination-not-found': d => `${d.path} isn't there. Connect the drive, or choose another folder.`,
+  'destination-not-whole': d => `Give the whole folder, starting with its drive: for example E:\\ or E:\\Backups, not "${d.path}".`,
+  'backup-exists': d => `There is already a Backup called "${d.name}" in ${d.path}. Choose another name.`,
+  'password-too-short': () => 'The password needs at least 8 characters.',
+  'passwords-differ': () => 'The two passwords are different.',
+  'confirm-needed': () => 'Stopping needs a confirmation.',
+  'job-not-found': () => 'Hopover has nothing on record by that name.',
+  'not-json': () => 'Hopover got a request it couldn\'t read.',
+  'not-found': () => 'Hopover doesn\'t know that request.',
+  'wrong-method': () => 'Hopover doesn\'t take that request that way.',
+  'server-error': d => `Something went wrong in Hopover: ${d.reason}`,
+  // the page's own
+  'server-gone': () => 'Hopover isn\'t running any more. Double-click Hopover.cmd to start it again.',
+  'no-token': () => 'This page can only reach Hopover from the address Hopover opened. Double-click Hopover.cmd to open it again.',
+  'kind-backup': () => 'Back up',
+  'step-catalog': () => 'Listing your apps',
+  'step-settings': () => 'Saving your settings',
+  'step-extras': () => 'Archiving app data and other files',
+  'step-drivers': () => 'Saving drivers',
+  'step-pack': () => 'Packing and encrypting the Backup',
+  'last-job': d => `Last ${t('kind-' + d.kind)}, "${d.name}": ${{ finished: 'finished', failed: 'didn\'t finish', stopped: 'stopped' }[d.status] || d.status}.`,
+  'working': d => `Working… ${d.percent}%. You can close this tab; opening Hopover again comes back here.`,
+  'stop-title': d => `Stop the ${t('kind-' + d.kind)}?`,
+  'stop-text': d => `${d.kind === 'backup' ? 'The Backup won\'t be made, and what' : 'What'} Hopover has done so far is removed. You can start again afterwards.`,
+  'not-yet-ready-check': () => 'Check I\'m ready comes in a later version. For now, run .\\Test-WipeReady.ps1 in PowerShell, from the Hopover folder.',
+  'not-yet-restore': () => 'Restore from the page comes in a later version. For now, run .\\Restore.ps1 -Backup "<the .hopover.7z file>" in PowerShell, from the Hopover folder.',
+  'password-warning': () => 'Hopover can\'t recover a forgotten password, and nobody else can either. Keep it in your password manager.'
+};
+function t(code, details) { const f = MSG[code]; return f ? f(details || {}) : code; }
+const stepText = s => MSG['step-' + s] ? t('step-' + s) : s;
+const kindText = k => MSG['kind-' + k] ? t('kind-' + k) : k;
+
+// ---------- home ----------
+let H = null;           // /api/state
+let poll = null;        // the timer following a job
+
+function showHome() {
+  document.getElementById('planView').style.display = 'none';
+  for (const n of document.querySelectorAll('.plan-only')) n.hidden = true;
+  document.getElementById('heading').textContent = 'Hopover';
+  document.getElementById('homeView').hidden = false;
+}
+async function startHome() {
+  showHome();
+  try { H = await (await api('/api/state')).json(); }
+  catch (e) { renderHome(el('div', { class: 'error' }, 'Could not load: ' + e.message)); return; }
+  document.getElementById('meta').textContent = `${H.computer}${H.version ? ' · Hopover ' + H.version : ''}`;
+  if (H.activeJob) followJob(H.activeJob); else renderHomeStart();
+}
+function renderHome(...kids) { document.getElementById('homeView').replaceChildren(el('div', { class: 'home' }, ...kids)); window.scrollTo(0, 0); }
+
+function renderHomeStart(note) {
+  const last = H && H.lastJob;
+  const card = (title, text, onclick) => el('button', { class: 'card', onclick }, el('strong', {}, title), el('span', {}, text));
+  renderHome(
+    el('h2', {}, 'What would you like to do?'),
+    el('div', { class: 'sub' }, 'Moving to a new PC, or reinstalling this one: back up first, check you are ready, then restore on the new install.'),
+    el('div', { class: 'cards' },
+      card('Back up', 'Save this PC\'s apps, settings and files into one encrypted file that you keep somewhere safe.', () => renderBackupForm()),
+      card('Check I\'m ready', 'Before you wipe this PC: make sure the Backup is good and somewhere the wipe won\'t reach.', () => renderHomeStart(t('not-yet-ready-check'))),
+      card('Restore', 'Put a Backup onto this PC: apps, settings and files.', () => renderHomeStart(t('not-yet-restore')))),
+    note ? el('div', { class: 'note' }, note) : null,
+    last && last.status !== 'running' ? el('div', { class: 'note' },
+      t('last-job', last) + ' ',
+      el('button', { class: 'btn small', onclick: () => followJob(last) }, 'Show what happened')) : null);
+}
+
+// A passphrase of four words, picked with the browser's cryptographic random numbers.
+const WORDS = ('able acid acorn actor adapt admit adult agent agree ahead aisle alarm album alert alien alley allow almond alpha amber ample angle ankle apple april apron arena argue armor army aroma arrow artist ashes aside atlas atom attic audio august aunt autumn avocado award awake axis ' +
+  'bacon badge bagel baker balance balcony ballet bamboo banana banjo barley barrel basil basket batch beach beacon beagle beard beast beaver bedroom beetle begin bench berry bicycle bingo birch biscuit bison blanket blender blossom blouse blue blush board bonus book border bottle boulder bounce bowl box bracket branch brave bread breeze brick bridge brief bright broom brother brush bubble bucket budget buffalo bugle bundle bunny burger butter button buzzer ' +
+  'cabin cable cactus cadet camel camera canal candle candy canoe canvas canyon carbon cargo carpet carrot cart castle cattle cave cedar celery cello cement cereal chair chalk channel chapter charm cheese cherry chess chest chicken chimney choir chorus cider cinema circle citrus clam clay clever cliff climb clock cloud clover coach coast cobalt cocoa coconut coffee coin comet compass concert copper coral cotton couch cougar country cousin cradle crane crayon cream credit cricket crisp crown crystal cube cupboard curtain cushion cycle ' +
+  'daisy dance dash dawn deer degree delta denim desert desk detail dial diamond diary dinner dolphin domain donkey door dragon drama dream drift drum duck dune dust ' +
+  'eagle early earth easel echo eclipse edge eight elbow elder eleven elm ember emerald empty engine enjoy entry envelope equal error essay evening exact exit extra ' +
+  'fabric falcon family fancy farm feast feather fence ferry festival fiber fiddle field fig finch finger fire fish flag flame flash fleet flower fluffy flute focus foggy forest fork fossil fountain fox frame fresh fridge frog frost fruit fudge funny ' +
+  'gadget galaxy garden garlic gate gecko gentle giant ginger giraffe glacier glass glide globe glove goat golden goose gorilla grain grape graph grass gravel green grill grove guitar gull ' +
+  'habit hammer hamster harbor harvest hawk hazel heart hedge helmet herb heron hiking hill hobby honey hood horizon horse hotel hound humble hummus hunter hurry ' +
+  'iceberg icon idea igloo image index indigo inlet insect island ivory ivy ' +
+  'jacket jaguar jam jar jazz jelly jersey jewel jigsaw jockey journey juice jumbo jungle juniper ' +
+  'kale kayak kernel kettle kidney kitchen kite kitten kiwi knee knot koala ' +
+  'ladder lady lagoon lake lamp lantern laptop large lava lawn leaf lemon lentil leopard letter lettuce level library lilac lily lime linen lion liquid lizard llama lobster locket lodge lotus lucky lunar lunch ' +
+  'magnet mango maple marble market marsh mason meadow medal melon member menu mercury metal meteor middle mild milk mint mirror mitten mixer model monkey moose morning mosaic moss motor mountain muffin museum music mustard ' +
+  'napkin narrow nature navy nectar needle nest nickel night ninja noble noodle north novel number nutmeg ' +
+  'oasis oatmeal ocean october olive omega onion opal open orange orbit orchard orchid organ otter outdoor oval oven owl oyster ' +
+  'paddle palace panda panel paper parade parcel parrot pasta pastel patio peach peanut pear pebble pecan pelican pencil pepper piano pickle picnic pigeon pillow pilot pine pink pirate pistachio pixel pizza planet plum pocket poem polar pond pony poppy potato prairie pretzel prism pumpkin puppet purple puzzle ' +
+  'quail quarter quartz queen quest quick quiet quilt quiz ' +
+  'rabbit radar radio radish rain raisin ranch raven razor recipe record reef relay ribbon rice ridge ring river robin robot rocket rodeo roof rose rover ruby rugby ruler ' +
+  'saddle safari saffron salad salmon salt sandal sardine satin saturn scarf school scooter season seed sesame shadow shark sheep shell shield shrimp signal silver simple siren sketch skiing sled slipper smile snail snow soap soccer socket sofa solar sonnet soup spark sparrow spice spider spinach spoon spring sprout squash squirrel stable star steam stone stool storm story straw stream sugar summer sunny sunset super swan sweater swift ' +
+  'table tablet taco talent tango teapot teddy temple tennis tent thistle thunder ticket tiger timber toast tomato topaz torch tortoise tower tractor trail train tree trophy trumpet tulip tuna tundra turkey turtle tuxedo twig ' +
+  'umbrella uncle union unit upbeat urban useful ' +
+  'valley vanilla vapor velvet venus verse vessel video village vine violet violin visit vivid volcano voyage ' +
+  'wafer wagon walnut walrus wander warm wasabi water wave whale wheat whistle willow window winter wizard wolf wombat wonder wool world ' +
+  'yacht yak yard yarn yellow yodel yogurt young yoyo ' +
+  'zebra zero zigzag zinc zipper zone zoom ' +
+  'acre actress advice aerial afford agenda airport alcove alpine amazing amulet anchor angel animal annual answer antique anvil apricot arcade arch archer arctic armchair artichoke ascend aspen asteroid athlete avenue aviator ' +
+  'backpack badger bakery balloon ballot bandit banner barn baron basin bassoon bath battery bayou bazaar beanie bedrock beef beehive bellows belt beret bigfoot binder blizzard blimp bluebird bobcat bonfire bonnet boots bouquet boxer bracelet breakfast brisket broccoli bronze brownie buckle bulldog bumper bungalow burrow bushel butterfly ' +
+  'cabbage cafe cake calendar calm camping candor cannon cape capital caramel cardinal carnival carousel cashew casino catalog cauldron caviar ceiling census chamber champion chapel chariot cheetah chef chili chip chocolate cinnamon citizen clarinet classic clinic closet cobra cocktail collar colony column comedy comfort cookie corner cosmos costume cottage cowboy coyote crab crater creek crocodile crumble cucumber cupcake curry custard cymbal ' +
+  'dagger dairy dancer dazzle debut decade decimal dentist depot derby dessert diesel dingo dinosaur diploma direct discus divan dock doctor dome doodle dove dragonfly drawer dress driver drizzle duet dumpling duster dwarf ' +
+  'earring easy eclair eggplant elephant elevator elf embassy emblem emu encore endless energy enigma entire episode equator escape espresso estate eternal evergreen exhibit expert ' +
+  'factory fairy fajita fame fantasy fashion fawn ferret fiesta figure filter finale firefly fjord flamingo flannel flask flicker flint flipper flora fluent foam folder folk forty fraction freckle freeway frisbee frozen furnace future ' +
+  'gallery gallop game gamma garage gazebo gelato gem genius geyser ghost gift gigantic glimmer glossy goblin goggles gondola gopher gospel gown granite gravy greeting grocery groove guava guest gumbo gust gym ' +
+  'haddock hairy halibut hallway halo hamlet hammock handbag handle harp hatchet haven haystack headband heater heaven hemlock hermit hickory highway hinge hippo holiday hollow homework hoodie hopper hornet hostel hotdog hourglass husky hybrid hymn ' +
+  'icicle iguana impala incense infant inkwell inner intro invent iris iron item ' +
+  'jackal jasmine javelin jeans jellyfish jester jetty jingle jolly joyful judge juggler jukebox july june junior ' +
+  'kangaroo karate keeper kennel ketchup keyboard kilt kimono kingdom kiosk knight knitting ' +
+  'label lace lamb landmark lasagna latch latte laundry lavender lawyer lecture legend lemur lighthouse limerick limousine linden lingo lobby locust loft lollipop lookout lounge lullaby lumber lute lyric ' +
+  'macaroni machine magic magpie mailbox mammoth manor mantle marathon margin marina mascot matrix mattress mayor meatball mechanic melody mermaid message midnight migrate mineral minnow mission mocha modest molar monarch monsoon moped mortar mosquito motel mower mule mural muscle mushroom musket myth ' +
+  'nacho nanny narwhal nebula neon nephew network newt nibble nightly nimble nomad noon notebook nougat nugget nursery ' +
+  'oak oatcake object ocelot octopus odyssey office omelet onyx opera optic oracle orca origin ornament ostrich outpost overall oxygen ' +
+  'pacific pagoda paint pajamas pancake panther papaya paprika parka parsley partner passport patch pathway pattern pavement peacock pedal penguin penny peony pepperoni perch petal pewter pharaoh phoenix photo pianist piglet pinecone pinwheel pita plaza pliers plumber pod pollen poncho popcorn porch portal possum postcard potter pottery powder praline prince printer pudding puffin pulley python ' +
+  'quaint quantum quarry quiche quill quince quokka quota ' +
+  'raccoon racket raft railway rainbow ramble rapid ravioli reader rebel recess redwood reindeer remote reptile rescue retro rhino rhubarb rhythm riddle ripple roadway roast rocky rooster rosemary rowboat rubber rucksack runway rustic ' +
+  'sage sailor salsa sample sandbox sapphire satchel sauce sausage scallop scholar scone scout scroll seagull seal sequel serpent settle shamrock sherbet shoebox shovel shower shuttle sidewalk sierra silk skateboard skillet skyline slate sleigh slope smoothie snorkel sorbet spaghetti spatula sphinx spindle sponge spruce stadium stamp stapler starfish statue stencil stingray studio submarine subway sundae surfer sushi swamp syrup ' +
+  'tadpole tailor tambourine tangerine tapestry target tavern teacup teacher telescope tempo terrace texture theater thimble throne thyme tiara tide toffee token tonic topic tornado toucan towel toy trapeze treasure triangle trolley trout truffle tugboat tunnel turnip tweed twilight typhoon ' +
+  'ukulele ultra unicorn uniform universe upstairs utensil ' +
+  'vacuum valve vampire vase vault vector veggie velcro veranda vertex vest viking vintage viper visor vista vortex vulture ' +
+  'waffle waiter walkway wallet wardrobe warrior washer watchdog waterfall weasel weekend welcome wetland wharf wheel whisker wigwam wildcat windmill wingman wisdom wiggle woodland workshop wrench wristband ' +
+  'xylophone yeti yummy zealous zenith zeppelin zesty zodiac zucchini').split(' ');
+function suggestPassphrase() {
+  const n = WORDS.length, limit = Math.floor(2 ** 32 / n) * n, out = [];
+  const buf = new Uint32Array(1);
+  while (out.length < 4) { crypto.getRandomValues(buf); if (buf[0] < limit) out.push(WORDS[buf[0] % n]); }
+  return out.join('-');
+}
+
+function renderBackupForm(values) {
+  const v = values || { name: H.suggestedName || '', destination: H.suggestedDestination || '' };
+  const name = el('input', { type: 'text', value: v.name, 'aria-label': 'Name' });
+  const dest = el('input', { type: 'text', value: v.destination, placeholder: 'For example E:\\  (a USB drive)', 'aria-label': 'Where to save it' });
+  const pw1 = el('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Password' });
+  const pw2 = el('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'The password again' });
+  const reveal = on => { pw1.type = pw2.type = on ? 'text' : 'password'; show.textContent = on ? 'Hide' : 'Show'; };
+  const show = el('button', { class: 'btn', 'aria-label': 'Show or hide the password', onclick: () => reveal(pw1.type === 'password') }, 'Show');
+  const msg = el('div');
+  const say = text => msg.replaceChildren(text ? el('div', { class: 'error' }, text) : '');
+  const choose = el('button', { class: 'btn', onclick: async () => {
+    choose.disabled = true;
+    try { const r = await (await api('/api/pick-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start: dest.value }) })).json(); if (r.path) dest.value = r.path; }
+    catch (e) { say(e.message); }
+    finally { choose.disabled = false; }
+  } }, 'Choose…');
+  const go = el('button', { class: 'btn primary', onclick: async () => {
+    if (pw1.value.length < 8) { say(t('password-too-short')); return; }
+    if (pw1.value !== pw2.value) { say(t('passwords-differ')); return; }
+    go.disabled = true; say('');
+    try {
+      const r = await (await api('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.value, destination: dest.value, password: pw1.value, passwordAgain: pw2.value }) })).json();
+      pw1.value = pw2.value = '';
+      followJob(r.job);
+    } catch (e) { say(e.message); go.disabled = false; }
+  } }, 'Back up');
+  renderHome(
+    el('h2', {}, 'Back up'),
+    el('div', { class: 'sub' }, 'Hopover saves this PC\'s apps, settings and files into one encrypted file. It runs in the background: you can close this tab, and opening Hopover again shows how it is going.'),
+    el('div', { class: 'form' },
+      el('div', { class: 'field' }, el('label', {}, 'Name'), name, el('div', { class: 'hint' }, 'The file is called this, with .hopover.7z after it.')),
+      el('div', { class: 'field' }, el('label', {}, 'Where to save it'), el('div', { class: 'row' }, dest, choose),
+        el('div', { class: 'hint' }, 'Somewhere the reinstall won\'t erase: a USB drive, another drive, or a folder that syncs to the cloud.')),
+      el('div', { class: 'field' }, el('label', {}, 'Password'), el('div', { class: 'row' }, pw1,
+        show, el('button', { class: 'btn', onclick: () => { pw1.value = pw2.value = suggestPassphrase(); reveal(true); } }, 'Suggest one')),
+        el('div', { class: 'hint' }, 'At least 8 characters. Four random words are easy to type and hard to guess.')),
+      el('div', { class: 'field' }, el('label', {}, 'The password again'), pw2),
+      el('div', { class: 'warn' }, t('password-warning')),
+      msg,
+      el('div', { class: 'buttons' }, go, el('button', { class: 'btn', onclick: () => renderHomeStart() }, 'Cancel'))));
+  name.focus();
+}
+
+// ---------- a job's progress ----------
+function followJob(job) {
+  if (poll) clearTimeout(poll);
+  const events = [];
+  let next = 0, current = job;
+  const bar = el('div', { style: 'width: 0%' });
+  const list = el('ul', { class: 'events' });
+  const result = el('div');
+  const buttons = el('div', { class: 'buttons' });
+  const status = el('div', { class: 'sub' });
+  const intro = el('div', { class: 'sub' });
+  renderHome(el('h2', {}, `${kindText(job.kind)}: ${job.name}`), intro, status, el('div', { class: 'bar' }, bar), list, result, buttons);
+  // Every message gets the job's kind with its details, so a job-* message can say what didn't happen.
+  const say = e => t(e.code, { ...(e.details || {}), kind: job.kind });
+
+  const draw = () => {
+    const steps = new Map(), notes = [], files = [];
+    let percent = 0, end = null, start = null;
+    for (const e of events) {
+      if (e.type === 'job-started') start = e;
+      else if (e.type === 'step-started') steps.set(e.step, { step: e.step, done: false });
+      else if (e.type === 'step-finished') steps.set(e.step, { step: e.step, done: true, ok: e.ok !== false });
+      else if (e.type === 'percent') percent = e.percent;
+      else if (e.type === 'message') notes.push(e);
+      else if (e.type === 'item') files.push(e);
+      else if (e.type === 'job-finished') end = e;
+    }
+    if (end && end.ok) percent = 100;
+    bar.style.width = percent + '%';
+    const running = current.status === 'running';
+    intro.textContent = start ? say(start) : '';
+    status.textContent = running ? t('working', { percent }) : '';
+    list.replaceChildren(
+      ...[...steps.values()].map(s => el('li', {},
+        el('span', { class: 'mark' }, !s.done ? (running ? '…' : '✕') : s.ok ? '✓' : '!'),
+        el('span', {}, stepText(s.step)))),
+      ...notes.map(n => el('li', { class: 'note-line' }, el('span', { class: 'mark' }, '!'), el('span', {}, (n.step ? stepText(n.step) + ': ' : '') + say(n)))),
+      ...(files.length > 1 ? files.map(f => el('li', {}, el('span', { class: 'mark' }, '·'), el('span', { class: 'mono' }, say(f)))) : []));
+    result.replaceChildren(end ? el('div', { class: end.ok ? 'ok-box' : 'error' }, say(end)) : '');
+    // Rebuilt only when the job's state changes, so a click never lands on a button just replaced.
+    if (shownRunning !== running) {
+      shownRunning = running;
+      buttons.replaceChildren(running
+        ? el('button', { class: 'btn', onclick: confirmStop }, 'Stop…')
+        : el('button', { class: 'btn primary', onclick: () => startHome() }, 'Back to the start'));
+    }
+  };
+  let shownRunning = null;
+
+  const confirmStop = () => {
+    let box = null;
+    const stop = el('button', { class: 'btn primary', onclick: async () => {
+      stop.disabled = true;
+      try { await api(`/api/jobs/${encodeURIComponent(job.id)}/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true }) }); box.remove(); clearTimeout(poll); tick(); }
+      catch (e) { toast(e.message, true); stop.disabled = false; }
+    } }, 'Stop it');
+    box = modal(t('stop-title', { kind: job.kind }), null, el('div', {},
+      el('p', {}, t('stop-text', { kind: job.kind })),
+      el('div', { class: 'buttons' }, stop, el('button', { class: 'btn', onclick: () => box.remove() }, 'Keep going'))));
+  };
+
+  const tick = async () => {
+    try {
+      const r = await (await api(`/api/jobs/${encodeURIComponent(job.id)}/events?since=${next}`)).json();
+      events.push(...r.events); next = r.next; current = r.job;
+      draw();
+      if (current.status === 'running') poll = setTimeout(tick, 1000);
+    } catch (e) {
+      if (e.code) { result.replaceChildren(el('div', { class: 'error' }, e.message)); return; }
+      status.textContent = '';
+      result.replaceChildren(el('div', { class: 'error' }, t('server-gone')));
+      buttons.replaceChildren();
+    }
+  };
+  draw();
+  tick();
+}
+
+if (START === 'home') startHome();
+else load(false).catch(e => { document.getElementById('main').replaceChildren(el('div', { class: 'note' }, 'Could not load: ' + e.message)); });
 </script>
 </body>
 </html>

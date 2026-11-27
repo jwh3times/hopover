@@ -29,6 +29,7 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $scriptDir = $scriptDir.TrimEnd('\')
 . (Join-Path $scriptDir 'lib\Common.ps1')
+. (Join-Path $scriptDir 'lib\Server.ps1')
 $DataDir  = Resolve-DataDir $DataDir
 $Config   = Get-Options $DataDir
 if (-not $MigrationRoot) { $MigrationRoot = Expand-ConfigPath $Config.migrationRoot }
@@ -360,26 +361,8 @@ function Get-Catalog {
 }
 
 # ---------------------------------------------------------------------------
-# HTTP
+# HTTP (lib\Server.ps1)
 # ---------------------------------------------------------------------------
-function Send-Text($Ctx, [int]$Code, [string]$Type, [string]$Body) {
-    $bytes = $Utf8.GetBytes($Body)
-    $res = $Ctx.Response
-    $res.StatusCode = $Code
-    $res.ContentType = $Type
-    $res.AddHeader('Cache-Control', 'no-store')
-    $res.AddHeader('X-Content-Type-Options', 'nosniff')
-    $res.ContentLength64 = $bytes.Length
-    $res.OutputStream.Write($bytes, 0, $bytes.Length)
-    $res.OutputStream.Close()
-}
-function Send-Json($Ctx, $Obj, [int]$Code = 200) { Send-Text $Ctx $Code 'application/json; charset=utf-8' (ConvertTo-Json -InputObject $Obj -Depth 12 -Compress) }
-
-function Read-Body($Ctx) {
-    $reader = New-Object System.IO.StreamReader($Ctx.Request.InputStream, $Utf8)
-    try { return $reader.ReadToEnd() } finally { $reader.Close() }
-}
-
 $script:Catalog = $null
 $script:Running = $true
 
@@ -387,14 +370,9 @@ function Invoke-Request($Ctx) {
     $req = $Ctx.Request
     $path = $req.Url.AbsolutePath
 
-    if ($path -eq '/' -and $req.HttpMethod -eq 'GET') {
-        $html = [IO.File]::ReadAllText($PagePath).Replace('__TOKEN__', $Token)
-        $Ctx.Response.AddHeader('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'")
-        Send-Text $Ctx 200 'text/html; charset=utf-8' $html
-        return
-    }
+    if ($path -eq '/' -and $req.HttpMethod -eq 'GET') { Send-Page $Ctx $PagePath $Token 'plan'; return }
     if (-not $path.StartsWith('/api/')) { Send-Text $Ctx 404 'text/plain' 'Not found'; return }
-    if ($req.Headers['X-Token'] -ne $Token) { Send-Text $Ctx 403 'text/plain' 'Forbidden'; return }
+    if (-not (Test-RequestToken $Ctx $Token)) { Send-Text $Ctx 403 'text/plain' 'Forbidden'; return }
 
     switch ($path) {
         '/api/data' {
@@ -459,36 +437,9 @@ function Invoke-Request($Ctx) {
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-$listener = $null
-foreach ($p in $Port..($Port + 10)) {
-    $l = New-Object System.Net.HttpListener
-    $l.Prefixes.Add("http://localhost:$p/")
-    try { $l.Start(); $listener = $l; $Port = $p; break } catch { $l.Close() }
-}
-if (-not $listener) { throw "Couldn't listen on ports $Port-$($Port + 10). Pass -Port with a free port." }
-
-$url = "http://localhost:$Port/"
+$server = Start-LocalListener $Port
+$url = "http://localhost:$($server.Port)/"
 Write-Host "Restore plan: $url" -ForegroundColor Cyan
 Write-Host 'Stop with the Quit button on the page, or Ctrl+C here.'
 if (-not $NoBrowser) { Start-Process $url }
-
-try {
-    while ($script:Running -and $listener.IsListening) {
-        $task = $listener.GetContextAsync()
-        # Short waits keep Ctrl+C working; a blocking GetContext() ignores it.
-        while (-not $task.AsyncWaitHandle.WaitOne(300)) { }
-        $ctx = $task.GetAwaiter().GetResult()
-        try { Invoke-Request $ctx | Out-Null }
-        catch {
-            # The browser dropped the connection (tab reloaded or closed mid-request): nothing to report.
-            $inner = $_.Exception; while ($inner.InnerException) { $inner = $inner.InnerException }
-            if ($inner -is [System.Net.HttpListenerException] -or $inner -is [System.IO.IOException]) { continue }
-            Write-Host "Request failed: $($_.Exception.Message)" -ForegroundColor Yellow
-            try { Send-Json $ctx @{ error = $_.Exception.Message } 500 } catch { }
-        }
-    }
-} finally {
-    $listener.Stop()
-    $listener.Close()
-    Write-Host 'Stopped.'
-}
+Invoke-LocalServer $server.Listener { param($ctx) Invoke-Request $ctx } { $script:Running }

@@ -10,6 +10,10 @@ Hopover moves one PC's apps, settings and files onto a fresh install of Windows 
 The one file Hopover makes of a PC: its apps, settings, app data, drivers and the user's own files, encrypted by default. The user names it and keeps it anywhere, on a drive or in the cloud. Each Backup holds everything a restore needs.
 _Avoid_: snapshot, export, archive, capsule, migration drive
 
+**Back up**:
+Making a Backup: the button on Hopover's page, and the work it starts, which runs in the background until the Backup is made or the user stops it. Two words, capitalised, for the action; one word for the file.
+_Avoid_: backup (for the action), save
+
 **Cloud backup service**:
 A third-party service such as Backblaze or OneDrive that keeps copies of files online. It is not a Backup, and Hopover only checks on it.
 _Avoid_: backup (without "cloud")
@@ -57,7 +61,7 @@ The user's choices of what not to restore. Anything the plan doesn't leave out i
 _Avoid_: restore list, selection
 
 **Step**:
-One stage of a restore, such as installing apps or cloning repos, run in a fixed order.
+One stage of a Back up or a restore, such as listing apps or cloning repos, run in a fixed order.
 _Avoid_: task, phase
 
 **To-do list**:

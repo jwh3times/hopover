@@ -6,6 +6,7 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
 
 | Script | Run | What it does |
 | --- | --- | --- |
+| `Hopover.cmd` | both | Double-click it: Hopover's page in your browser. **Back up** there runs `New-Backup.ps1` in the background; **Check I'm ready** and **Restore** come later. |
 | `New-Backup.ps1` | old PC | Runs the four capture scripts below and packs everything into one encrypted file, `<name>.hopover.7z`. On the new Windows PC, `Restore.ps1 -Backup <file>` restores from it; the steps below still work without one. |
 | `Catalog-InstalledApps.ps1` | old PC | Lists installed, Store and portable apps and runs `winget export`. |
 | `Export-Settings.ps1` | old PC | Writes `settings\`: PATH, env vars (secrets withheld), Windows preferences, drive layout, hardware, dev config and package lists, VS Code, Terminal, Claude Code, Codex, startup apps, and `settings\dev\repos.md` (work not in git). |

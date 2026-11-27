@@ -21,6 +21,8 @@
         -Steps a,b      capture only these: catalog, settings, extras, drivers (default: all)
         -SplitMB n      write the Backup in pieces of n MB (.001, .002, ...)
         -StagingDir     where to build it first (default: %TEMP%); a folder is made inside and removed after
+        -EventLog       also append progress events to this file, one JSON object per line (lib\Jobs.ps1);
+                        Hopover's page runs it this way
 
     Defaults come from the Options; parameters override them. Your data folder is only read.
 #>
@@ -34,13 +36,23 @@ param(
     [int]$SplitMB = 0,
     [string]$StagingDir,
     # Data folder (default: $env:HOPOVER_DATA, else .\data).
-    [string]$DataDir
+    [string]$DataDir,
+    [string]$EventLog
 )
 
 $ErrorActionPreference = 'Stop'
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . (Join-Path $scriptDir 'lib\Common.ps1')
 . (Join-Path $scriptDir 'lib\Backup.ps1')
+. (Join-Path $scriptDir 'lib\Jobs.ps1')
+
+# Progress events for the page, when it asked for them. Every message is a code the page's string
+# table words, with the details that fill it in.
+function Send-Event { if ($EventLog) { Add-JobEvent -Path $EventLog @args } }
+trap {
+    Send-Event -Type 'job-finished' -Ok $false -Code 'backup-failed' -Details @{ reason = $_.Exception.Message }
+    break
+}
 $DataDir = Resolve-DataDir $DataDir
 $Config  = Get-Options $DataDir
 
@@ -100,29 +112,46 @@ try {
         extras   = { & (Join-Path $scriptDir 'Backup-Extras.ps1') -DataDir $stagingData -Destination (Join-Path $staging 'extras') }
         drivers  = { & (Join-Path $scriptDir 'Save-Drivers.ps1') -DataDir $stagingData -Destination (Join-Path $staging 'drivers') }
     }
+    # Each capture step, and packing, is an equal share of the progress.
+    $total = @($known | Where-Object { $Steps -contains $_ }).Count + 1
+    $done = 0
     foreach ($step in $known) {
         if ($Steps -notcontains $step) { continue }
         if ($step -eq 'drivers' -and -not (Test-IsAdmin)) {
             $problems.Add('Drivers were left out: exporting them needs an elevated PowerShell (Run as administrator).')
+            Send-Event -Type 'message' -Step $step -Code 'drivers-need-admin'
+            $done++
+            Send-Event -Type 'percent' -Percent ([int](100 * $done / $total))
             continue
         }
         Write-Host ''
         Write-Host "== Backup: $step" -ForegroundColor Cyan
+        Send-Event -Type 'step-started' -Step $step
         $global:LASTEXITCODE = 0
         try { & $runs[$step] | Out-Host } catch { throw "The $step step failed, so no Backup was made: $($_.Exception.Message)" }
-        if ($LASTEXITCODE) { $problems.Add("The $step step reported a problem (exit $LASTEXITCODE); see its output above.") }
+        $exit = $LASTEXITCODE
+        if ($exit) {
+            $problems.Add("The $step step reported a problem (exit $exit); see its output above.")
+            Send-Event -Type 'message' -Step $step -Code 'step-problem' -Details @{ exitCode = $exit }
+        }
         $captured += $step
+        $done++
+        Send-Event -Type 'step-finished' -Step $step -Ok (-not $exit)
+        Send-Event -Type 'percent' -Percent ([int](100 * $done / $total))
     }
 
     Write-Host ''
     Write-Host "== Backup: packing $Name$BackupSuffix" -ForegroundColor Cyan
+    Send-Event -Type 'step-started' -Step 'pack'
     $made = New-Backup -Source $staging -Destination $Destination -Name $Name -Password $password -NoEncryption:$NoEncryption `
         -SplitBytes ([long]$SplitMB * 1MB) -Captured $captured -SevenZip $sevenZip
+    Send-Event -Type 'step-finished' -Step 'pack' -Ok $true
 } finally {
     # The staging folder is an unencrypted copy of everything: it must not stay behind unnoticed.
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $staging) {
         Write-Host "Couldn't remove the staging folder $staging. It holds an unencrypted copy of the Backup: delete it yourself." -ForegroundColor Red
+        Send-Event -Type 'message' -Code 'staging-not-removed' -Details @{ path = $staging }
     }
 }
 
@@ -130,6 +159,15 @@ $size = (@($made.Files) | ForEach-Object { (Get-Item -LiteralPath $_).Length } |
 Write-Host ''
 Write-Host "Backup made: $($made.Path) ($([math]::Round($size / 1MB, 1)) MB$(if (@($made.Files).Count -gt 1) { " in $(@($made.Files).Count) pieces" }))" -ForegroundColor Green
 if ($made.Encrypted) { Write-Host 'It is encrypted. Without its password nobody can open it, including you.' }
-if (@($made.LeftOut).Count) { Write-Host "  [!] Left out because the Backup isn't encrypted (they hold passwords and keys): $(@($made.LeftOut) -join ', ')." -ForegroundColor Yellow }
+if (@($made.LeftOut).Count) {
+    Write-Host "  [!] Left out because the Backup isn't encrypted (they hold passwords and keys): $(@($made.LeftOut) -join ', ')." -ForegroundColor Yellow
+    Send-Event -Type 'message' -Code 'left-out-secrets' -Details @{ items = @($made.LeftOut) }
+}
 foreach ($p in $problems) { Write-Host "  [!] $p" -ForegroundColor Yellow }
-if ($Steps.Count -lt $known.Count) { Write-Host "  [!] This Backup holds only: $($captured -join ', ')." -ForegroundColor Yellow }
+if ($Steps.Count -lt $known.Count) {
+    Write-Host "  [!] This Backup holds only: $($captured -join ', ')." -ForegroundColor Yellow
+    Send-Event -Type 'message' -Code 'only-some-steps' -Details @{ captured = @($captured) }
+}
+foreach ($f in @($made.Files)) { Send-Event -Type 'item' -Code 'backup-file' -Details @{ path = $f; bytes = (Get-Item -LiteralPath $f).Length } }
+Send-Event -Type 'percent' -Percent 100
+Send-Event -Type 'job-finished' -Ok $true -Code 'backup-made' -Details @{ path = $made.Path; bytes = $size; pieces = @($made.Files).Count; encrypted = [bool]$made.Encrypted }

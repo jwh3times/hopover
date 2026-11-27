@@ -1,6 +1,8 @@
 # Linux scripts must keep LF endings even when checked out on Windows.
 *.sh  text eol=lf
 *.py  text eol=lf
+# cmd.exe misreads a batch file with LF endings (labels, and lines near a 512-byte boundary).
+*.cmd text eol=crlf
 
 # `git archive` of a tag writes the tag into lib/version.txt in place of its $Format:...$
 # placeholder, so the release zip knows its version (Get-HopoverVersion in lib/Backup.ps1).
