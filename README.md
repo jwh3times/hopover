@@ -145,6 +145,23 @@ Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.c
 
 All of them take `-DataDir`; settings come from the [Options](#options) and parameters override them.
 
+### New-Backup.ps1 (old PC)
+
+Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts below capture. It runs `Catalog-InstalledApps.ps1`, `Export-Settings.ps1`, `Backup-Extras.ps1` and, from an elevated prompt, `Save-Drivers.ps1` into a staging folder, then packs it with 7-Zip ([ADR 0002](docs/adr/0002-one-encrypted-backup-file.md)).
+
+```powershell
+.\New-Backup.ps1 -Destination E:\                                  # asks for the password twice
+.\New-Backup.ps1 -Destination E:\ -Name "Laptop before reinstall"
+```
+
+- **Encrypted by default:** AES-256 with the file names hidden too. It asks for a password (at least 8 characters) twice; a forgotten password can't be recovered. A program can pipe the password in instead: `... | powershell -File .\New-Backup.ps1 ...`. The password reaches 7-Zip only on its standard input, never a command line. `-NoEncryption` makes a Backup anyone can open.
+- **Inside it:** the exports as a data folder (`data\`, with the Options it was made with as `data\config.json`, and your `restore-plan.json` and `NOTES.md` if you have them), the extras (`extras\`), the drivers (`drivers\`) and `hopover.json`, which records the format version, when and where the Backup was made, whether it's encrypted, and every app by its catalog key with its winget or Chocolatey id. Any 7-Zip opens it with the password.
+- **7-Zip:** 7-Zip's `7zr.exe`, pinned by version and SHA-256 in `lib\7zip.json`. It's downloaded to `%LOCALAPPDATA%\Hopover\bin` on first use, and a file whose hash differs is refused.
+- **Your data folder is only read.** The staging folder (under `%TEMP%`, or `-StagingDir`) is removed afterwards, and an existing Backup with the same name is never overwritten.
+- **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`.
+
+Restoring straight from a Backup comes next; until then, restore from the data folder and migration drive as below.
+
 ### Catalog-InstalledApps.ps1 (old PC)
 
 Lists installed programs from the registry, Store apps and portable apps, and runs `winget export`.
@@ -337,6 +354,7 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | --- | --- |
 | `*.ps1` | The Windows scripts above |
 | `lib\Common.ps1` | Shared helpers (data folder, Options) |
+| `lib\Backup.ps1`, `lib\7zip.json` | The Backup module (make, test and find Backups) and the pinned 7-Zip it uses |
 | `ui\index.html` | The page `Show-RestorePlan.ps1` serves |
 | `catalog\` | App-data locations and the Linux translation tables |
 | `linux\` | `restore-linux.sh`, `restore_linux.py`, and `tests\` |

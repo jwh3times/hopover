@@ -6,7 +6,7 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 
 ## Layout
 
-- Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, config, helpers).
+- Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, Options, helpers). `lib\Backup.ps1` is the Backup module (make, test, find), with the 7-Zip it uses pinned by SHA-256 in `lib\7zip.json`; its tests download that `7zr.exe` once, so they need the network.
 - `ui\index.html` is the page `Show-RestorePlan.ps1` serves.
 - `catalog\` holds data, not code: `app-data.json` (app-data folders to back up), `linux-packages.json` (Windows app to Linux install methods), `linux-repos.json` (vendor repos, installer scripts, prerequisites).
 - `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.10+, standard library only), plus `tests\`.
@@ -30,6 +30,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 - Secrets: `Export-Settings.ps1` redacts and leak-scans everything it writes; keep that intact for any new export.
 - Plan keys (`restore-plan.json`) are shared by `Show-RestorePlan.ps1`, `Restore.ps1` and `restore_linux.py`; change all three together.
 - Options (`options.json`, layered over a data folder's `config.json`) are read by `Get-Options` in `lib/Common.ps1` and `load_options` in `restore_linux.py`, with the same keys and the same merge rule; change both together, and their tests.
+- An app's catalog key is found the same way by `Resolve-CatalogKey` in `lib/Backup.ps1` and `Catalog.lookup` in `restore_linux.py` (package key, then alias, then pattern, then `windowsOnly`); change both together. The extras items that hold secrets (`$SecretExtras` in `lib/Backup.ps1`) are named by `Backup-Extras.ps1` and `catalog/app-data.json`: a new secret-holding item goes in that list, or an unencrypted Backup carries it.
 - A PSScriptAnalyzer rule is excluded in `PSScriptAnalyzerSettings.psd1` only with the reason beside it; a ruff rule likewise in `pyproject.toml`.
 
 ## Commands
