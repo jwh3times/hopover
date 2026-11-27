@@ -27,6 +27,12 @@ $line = [Console]::In.ReadLine()
 $received = [ordered]@{ commandLine = [Environment]::CommandLine; stdin = $line; steps = @($Steps) }
 [IO.File]::WriteAllText((Join-Path (Split-Path -Parent $EventLog) 'received.json'), (ConvertTo-Json -InputObject $received), $Utf8)
 
+if ($env:HOPOVER_STUB -eq 'waits') {
+    # Left behind before the step says it started: tests wait for that event, then look for these.
+    New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $StagingDir 'unencrypted.txt') -Value 'a copy of everything' -Encoding ASCII
+    Set-Content -LiteralPath (Join-Path $Destination "$Name.hopover.7z") -Value 'half written' -Encoding ASCII
+}
 Add-JobEvent -Path $EventLog -Type 'step-started' -Step 'catalog'
 if ($env:HOPOVER_STUB -eq 'packed') {
     # The Backup is complete, but the job hasn't said it finished yet.
@@ -47,9 +53,6 @@ if ($env:HOPOVER_STUB -eq 'torn') {
     while ($true) { Start-Sleep -Milliseconds 200 }
 }
 if ($env:HOPOVER_STUB -eq 'waits') {
-    New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $StagingDir 'unencrypted.txt') -Value 'a copy of everything' -Encoding ASCII
-    Set-Content -LiteralPath (Join-Path $Destination "$Name.hopover.7z") -Value 'half written' -Encoding ASCII
     while ($true) { Start-Sleep -Milliseconds 200 }
 }
 Add-JobEvent -Path $EventLog -Type 'step-finished' -Step 'catalog' -Ok $true
