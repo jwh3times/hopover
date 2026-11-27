@@ -76,12 +76,12 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
    ```bash
    sudo apt install git     # or: sudo dnf install git / sudo pacman -S git
    git clone https://github.com/jwh3times/hopover.git ~/hopover
-   git clone <you>/hopover-private ~/hopover/data
+   git clone <you>/hopover-private ~/hopover/data   # only without a Backup
    cd ~/hopover
    ```
 2. On Arch or CachyOS, install `paru` or `yay` first if you want AUR packages (CachyOS ships paru). On Arch, enable `[multilib]` in `/etc/pacman.conf` if you'll use Steam.
-3. Mount the migration drive, then `linux/restore-linux.sh --dry-run` and read the plan.
-4. `linux/restore-linux.sh` (as your user; it asks for sudo). Log out and back in afterwards so PATH and group changes (docker) apply.
+3. Mount the drive with your Backup, then `linux/restore-linux.sh --backup "<path>/<name>.hopover.7z" --dry-run` and read the plan. It asks for the Backup's password. Without a Backup, clone your companion repo to `~/hopover/data`, mount the migration drive, and leave out `--backup`.
+4. The same without `--dry-run` (as your user; it asks for sudo). Once the restore is finished, delete the unpacked copy it names: it holds your files unencrypted. Log out and back in afterwards so PATH and group changes (docker) apply.
 5. Work through the report's "Still to do by hand" and "No Linux version" lists. Merge any `*.windows.*` config files it set aside.
 6. Games: launch Steam once and enable Proton; install Battle.net, the EA app and others through Lutris, and Epic/GOG games through Heroic. Copy game settings and addons from the extras archive into the Wine prefix if you want them.
 

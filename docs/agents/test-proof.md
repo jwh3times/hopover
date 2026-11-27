@@ -9,6 +9,12 @@ How `test-prover` runs one test on its own here. The suites and their CI jobs ar
   `uv run --no-sync python -m unittest discover -s linux/tests -p "$(basename <file>)" -v`; one test,
   by method name: `uv run --no-sync python -m unittest discover -s linux/tests -k <name> -v`.
   Worktree: link `.venv` (or run `uv sync --frozen`).
+  `linux/tests/test_backup.py` opens real Backups with a 7-Zip, and skips those tests without one,
+  which proves nothing: set `CI=1`, so a missing 7-Zip fails instead, and on Windows
+  `HOPOVER_TEST_7Z` to the cached pinned `7zr.exe` (`$LOCALAPPDATA/Hopover/bin/7zr-<version>.exe`).
+  Its POSIX-only tests (permissions, sessions, finding `7z`/`7zz`/`7za` on `PATH`) skip on
+  Windows: prove them in a Linux container, such as `docker run` of `ubuntu:22.04` with the
+  worktree mounted, after `apt-get install -y python3 7zip`.
 - Repo root: `tests/*.Tests.ps1`, Pester 6. One test, by its full name (the `Describe` and `It`
   names joined by a dot, `Split-List.returns an empty array for nothing`):
   `pwsh -NoProfile -Command 'Import-Module Pester -RequiredVersion 6.2.0; $r = Invoke-Pester -Configuration @{Run=@{Path="<file>"; PassThru=$true}; Filter=@{FullName="<name>"}; Output=@{Verbosity="Detailed"}}; "Pester ran {0} tests" -f ($r.PassedCount + $r.FailedCount); exit $r.FailedCount'`;
@@ -28,5 +34,5 @@ How `test-prover` runs one test on its own here. The suites and their CI jobs ar
   `node --test --test-name-pattern="<name>" <file>`. Worktree: none (the scripts need no
   dependencies).
 - `linux/tests/Test-LinuxCatalog.ps1` and `Test-LinuxRestore.ps1` are not unit suites: one reaches
-  vendor URLs over the network, the other needs Docker Desktop and a data folder, so `test-prover`
-  reports them as not proven.
+  vendor URLs over the network, the other needs Docker Desktop and the network (it restores a
+  fixture Backup it makes), so `test-prover` reports them as not proven.

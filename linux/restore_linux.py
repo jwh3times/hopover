@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-restore_linux.py: set up a Linux install from the exports a Windows PC made with
-this tool: the winget app list, package lists, git / VS Code / Claude Code /
+restore_linux.py: set up a Linux install from a Windows PC's Backup, or the exports
+in a data folder: the winget app list, package lists, git / VS Code / Claude Code /
 Codex config, the repo list and the extras archives.
 
-Run it through restore-linux.sh, which installs python3 and curl first if needed:
+Run it through restore-linux.sh, which installs python3, curl and 7-Zip first if needed:
 
-    linux/restore-linux.sh --dry-run     # show what would happen, change nothing
-    linux/restore-linux.sh               # do it (asks for sudo when needed)
-    linux/restore-linux.sh --list        # list the steps
+    linux/restore-linux.sh --backup <file> --dry-run   # show what would happen, change nothing
+    linux/restore-linux.sh --backup <file>             # do it (asks for sudo when needed)
+    linux/restore-linux.sh --list                      # list the steps
+
+--backup asks for the Backup's password (or reads it from standard input), refuses a
+wrong one or a Backup made by a newer Hopover before unpacking anything, then unpacks
+it to ~/.local/share/hopover/restore/<Backup name> (linux/backup.py) and restores from
+there. A rerun reuses that copy; a dry run unpacks to a temporary folder it removes.
 
 Apps are translated with catalog/linux-packages.json. For each app the first
 install method that works on this distro is used, ranked by the linux.prefer option
@@ -37,6 +42,8 @@ import urllib.request
 import zipfile
 from collections import namedtuple
 from pathlib import Path
+
+import backup
 
 TOOL = Path(__file__).resolve().parent.parent
 CATALOG = TOOL / "catalog"
@@ -162,6 +169,53 @@ def load_options(data):
             else:
                 opt[k] = v
     return opt
+
+
+# ---------------------------------------------------------------------------
+# Restoring from a Backup (linux/backup.py)
+# ---------------------------------------------------------------------------
+Opened = namedtuple("Opened", "folder temporary checked")
+
+
+def open_backup(path, dry_run, ask=backup.read_password, root=None, seven_zip=None):
+    """Checks a Backup opens and is one this Hopover can read, asking for its password when it is
+    encrypted, then unpacks it (or reuses the copy an earlier run unpacked). A dry run with no
+    copy to reuse unpacks into a temporary folder that close_backup removes: the copy holds the
+    Backup's files unencrypted. Raises backup.BackupError, before unpacking anything, for a wrong
+    password or a Backup made by a newer Hopover."""
+    seven_zip = backup.need_seven_zip(seven_zip)
+    checked, password = backup.open_manifest(path, ask, seven_zip)
+    if checked.result != "ok":
+        raise backup.BackupError(checked.message)
+    m = checked.manifest
+    created = str(m.get("created") or "")
+    made = f"{created[:10]} {created[11:16]} UTC" if len(created) >= 16 else "an unknown date"
+    print(
+        color("36", f"Backup: {path} (made on {m.get('computerName') or 'an unknown PC'}, {made})")
+    )
+    info(f"7-Zip:  {seven_zip}")
+    folder = backup.unpacked_backup(path, checked, root)
+    if folder:
+        info(f"already unpacked in {folder}")
+        return Opened(folder, False, checked)
+    if dry_run:
+        temp = tempfile.mkdtemp(prefix="hopover-dryrun-")
+        try:
+            out = backup.expand_backup(path, password, temp, checked, seven_zip)
+        except BaseException:
+            shutil.rmtree(temp, ignore_errors=True)
+            raise
+        info(f"unpacked for this dry run to {out.folder} (removed at the end)")
+        return Opened(out.folder, True, checked)
+    out = backup.expand_backup(path, password, root, checked, seven_zip)
+    info(f"unpacked to {out.folder}")
+    return Opened(out.folder, False, checked)
+
+
+def close_backup(opened):
+    """Removes a dry run's temporary copy; leaves a real restore's copy for the next run."""
+    if opened and opened.temporary:
+        shutil.rmtree(Path(opened.folder).parent, ignore_errors=True)
 
 
 def http_get(url, timeout=60, headers=None):
@@ -1992,13 +2046,16 @@ def write_report(ctx, path):
 
 
 def main():
-    default_data = os.environ.get("HOPOVER_DATA") or str(TOOL / "data")
     ap = argparse.ArgumentParser(
-        description="Set up Linux from a Windows PC's exports (see the tool's README)."
+        description="Set up Linux from a Windows PC's Backup or exports (see the tool's README)."
+    )
+    ap.add_argument(
+        "--backup",
+        help="a Backup to restore from (<name>.hopover.7z, or a split one's .001), instead of "
+        "--data and --extras; asks for its password, or reads it from standard input",
     )
     ap.add_argument(
         "--data",
-        default=default_data,
         help="data folder (default: $HOPOVER_DATA, else <tool>/data)",
     )
     ap.add_argument(
@@ -2050,12 +2107,51 @@ def main():
         )
         return 1
 
+    # From a Backup: unpack it (or reuse the copy a previous run unpacked) and restore from that
+    # copy as a data folder plus extras, the way Restore.ps1 -Backup does on Windows.
+    opened = None
+    if args.backup:
+        if args.data or args.extras:
+            print(
+                "--backup restores from the Backup itself; leave out --data and --extras.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            opened = open_backup(args.backup, args.dry_run)
+        except backup.BackupError as e:
+            print(color("31", f"{e} Nothing was restored."), file=sys.stderr)
+            return 1
+        args.data = str(Path(opened.folder) / "data")
+        args.extras = opened.folder
+    args.data = args.data or os.environ.get("HOPOVER_DATA") or str(TOOL / "data")
+    try:
+        code = restore(args)
+    finally:
+        close_backup(opened)
+    if opened and not opened.temporary:
+        print()
+        warn(
+            f"The unpacked copy in {opened.folder} holds this Backup's files unencrypted, "
+            "passwords and keys included."
+        )
+        warn(
+            f"Your next runs reuse it. Once the restore is finished, delete it: rm -rf -- {shlex.quote(opened.folder)}"
+        )
+    return code
+
+
+def restore(args):
+    """Runs the restore steps against args.data and args.extras, and writes the report."""
     ctx = Ctx(args)
     if not (ctx.data / "settings").is_dir() and not (ctx.data / "winget-packages.json").exists():
-        print(
-            f"No exports in {ctx.data}. Pass --data <your data folder> (the folder with settings/ and winget-packages.json).",
-            file=sys.stderr,
-        )
+        if args.backup:
+            print(f"The Backup {args.backup} holds no exports to restore.", file=sys.stderr)
+        else:
+            print(
+                f"No exports in {ctx.data}. Pass --backup <your Backup>, or --data <your data folder> (the folder with settings/ and winget-packages.json).",
+                file=sys.stderr,
+            )
         return 1
     if not ctx.sys.family:
         print("This distro isn't supported: no apt-get, dnf or pacman found.", file=sys.stderr)
