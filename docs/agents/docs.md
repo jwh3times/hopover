@@ -18,6 +18,8 @@
 - `changelog.d/*.md`: each branch's changelog fragment (every file there but the README), stamped
   into `CHANGELOG.md` after its merge and checked by the `changelog` CI job. `ship-owned`, like the
   `VERSION` file.
+- `GLOSSARY.md`: the project's language, one tight definition per term with the words to avoid,
+  and no implementation detail. Update when a term is settled or renamed while designing a change.
 - `docs/adr/*.md`: architecture decision records, one decision each with the reason it was made.
   Add one when a decision is hard to reverse and would surprise a reader; supersede rather than
   rewrite.
