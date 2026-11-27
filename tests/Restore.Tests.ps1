@@ -11,18 +11,24 @@ BeforeAll {
     $Shell = (Get-Process -Id $PID).Path
     $pw = (New-Object System.Net.NetworkCredential('', 'correct horse battery')).SecurePassword
 
+    # The restore runs the steps of this prompt's pass only, and GitHub's Windows runners are
+    # elevated: so the tests restore app-data, which runs in both passes, from an item of this pass.
+    $Elevated = Test-IsAdmin
+    $PromptKind = if ($Elevated) { 'elevated' } else { 'normal' }
+
     # A version-1 Backup, packed by hand from a frozen hopover.json so it stays a version-1
     # Backup whatever version New-Backup writes later: the exports under data\, an app-data item
-    # in extras\.
+    # in extras\ that restores %LOCALAPPDATA%\FixtureApp.
     $staging = Join-Path $TestDrive 'staging'
-    New-Item -ItemType Directory -Path (Join-Path $staging 'data\settings\dev'), (Join-Path $staging 'extras') | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $staging 'data\settings\dev'), (Join-Path $staging 'extras'), (Join-Path $TestDrive 'app\FixtureApp') | Out-Null
     Set-Content -LiteralPath (Join-Path $staging 'hopover.json') -Encoding ASCII -Value (
         '{ "formatVersion": 1, "hopoverVersion": "v0.3.0", "created": "2026-11-27T09:00:00.0000000Z", "sourceOs": "windows", ' +
         '"computerName": "FIXTURE-PC", "encrypted": true, "includesPasswordsAndKeys": false, "captured": ["settings", "extras"], ' +
         '"groups": ["settings"], "apps": [] }')
     Set-Content -LiteralPath (Join-Path $staging 'data\settings\dev\gitconfig') -Value "[user]`n`tname = Fixture User" -Encoding ASCII
-    [IO.File]::WriteAllBytes((Join-Path $staging 'extras\app-fixture.zip'), (New-Object byte[] 22))
-    $item = @{ Name = 'app-fixture'; File = 'app-fixture.zip'; Status = 'ok'; Kind = 'folder'; Admin = $false; RestoreTo = '%LOCALAPPDATA%\FixtureApp' }
+    Set-Content -LiteralPath (Join-Path $TestDrive 'app\FixtureApp\settings.txt') -Value 'fixture settings' -Encoding ASCII
+    & (Join-Path $env:SystemRoot 'System32\tar.exe') -a -c -f (Join-Path $staging 'extras\app-fixture.zip') -C (Join-Path $TestDrive 'app') FixtureApp
+    $item = @{ Name = 'app-fixture'; File = 'app-fixture.zip'; Status = 'ok'; Kind = 'folder'; Admin = $Elevated; RestoreTo = '%LOCALAPPDATA%\FixtureApp' }
     Set-Content -LiteralPath (Join-Path $staging 'extras\manifest.json') -Value (ConvertTo-Json @{ Items = @($item) } -Depth 4) -Encoding UTF8
     $BackupFile = Join-Path $TestDrive 'Fixture PC.hopover.7z'
     Push-Location $staging
@@ -38,7 +44,7 @@ BeforeAll {
     }
 
     # Restore.ps1 -Backup in a child PowerShell, the password piped in, in that profile.
-    function Invoke-Restore($Where, [string]$Phrase = 'correct horse battery', [string[]]$Arguments = @('-DryRun', '-Steps', 'git-config,app-data')) {
+    function Invoke-Restore($Where, [string]$Phrase = 'correct horse battery', [string[]]$Arguments = @('-DryRun', '-Steps', 'app-data')) {
         $saved = @{ LOCALAPPDATA = $env:LOCALAPPDATA; USERPROFILE = $env:USERPROFILE; TEMP = $env:TEMP; TMP = $env:TMP }
         $env:LOCALAPPDATA = $Where.AppData; $env:USERPROFILE = $Where.Home; $env:TEMP = $Where.Temp; $env:TMP = $Where.Temp
         $ErrorActionPreference = 'Continue'   # the child's own errors are output to read, not to throw
@@ -60,14 +66,12 @@ Describe 'Restore.ps1 -Backup -DryRun' {
     It 'restores a version-1 Backup from an unpacked copy: its data folder and its extras' {
         $run.ExitCode | Should -Be 0
         $run.Output | Should -Match 'unpacked for this dry run'
-        $run.Output | Should -Match ([regex]::Escape('\data  (normal prompt, DRY RUN)'))
-        $run.Output | Should -Match ([regex]::Escape("would: copy gitconfig -> $($p.Home)\.gitconfig"))
-        $run.Output | Should -Match ([regex]::Escape('would: extract app-fixture.zip'))
+        $run.Output | Should -Match ([regex]::Escape("\data  ($PromptKind prompt, DRY RUN)"))
+        $run.Output | Should -Match ([regex]::Escape("would: extract app-fixture.zip -> $($p.AppData)"))
     }
 
     It 'changes nothing, and removes the copy it unpacked for the dry run' {
-        $run.Output | Should -Match '== git-config'   # the steps ran, and only reported
-        Join-Path $p.Home '.gitconfig' | Should -Not -Exist
+        $run.Output | Should -Match '== app-data'   # the step ran, and only reported
         Join-Path $p.AppData 'FixtureApp' | Should -Not -Exist
         $p.Unpacked | Should -Not -Exist
         @(Get-ChildItem -LiteralPath $p.Temp -Recurse -File | Where-Object { $_.FullName -match 'hopover' }).Count | Should -Be 0
@@ -86,12 +90,12 @@ Describe 'Restore.ps1 -Backup -DryRun' {
 Describe 'Restore.ps1 -Backup, for real' {
     BeforeAll {
         $p = New-Profile
-        $run = Invoke-Restore $p -Arguments @('-Steps', 'git-config')
+        $run = Invoke-Restore $p -Arguments @('-Steps', 'app-data')
     }
 
     It 'restores from the Backup into this profile' {
         $run.ExitCode | Should -Be 0
-        (Get-Content -LiteralPath (Join-Path $p.Home '.gitconfig') -Raw) | Should -Match 'Fixture User'
+        (Get-Content -LiteralPath (Join-Path $p.AppData 'FixtureApp\settings.txt') -Raw) | Should -Match 'fixture settings'
     }
 
     It 'keeps the unpacked copy for the next run, and says where it is and what it holds' {
@@ -117,7 +121,7 @@ Describe 'Restore.ps1 -Backup with the password piped in' {
         $stdin = Join-Path $p.Temp 'stdin.txt'
         [IO.File]::WriteAllBytes($stdin, [byte[]](@(0xEF, 0xBB, 0xBF) + [Text.Encoding]::ASCII.GetBytes("correct horse battery`r`n")))
         $stdout = Join-Path $p.Home 'stdout.txt'
-        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', """$Restore""", '-Backup', """$BackupFile""", '-DryRun', '-Steps', 'git-config')
+        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', """$Restore""", '-Backup', """$BackupFile""", '-DryRun', '-Steps', 'app-data')
         $saved = @{ LOCALAPPDATA = $env:LOCALAPPDATA; USERPROFILE = $env:USERPROFILE; TEMP = $env:TEMP; TMP = $env:TMP }
         $savedEncoding = [Console]::InputEncoding
         try { [Console]::InputEncoding = [Text.Encoding]::UTF8 } catch { Set-ItResult -Skipped -Because 'this host has no console whose encoding can be set'; return }
@@ -142,7 +146,7 @@ Describe 'Restore.ps1 -Backup refusing' {
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Match ([regex]::Escape("That password doesn't open the Backup ""Fixture PC"". Nothing was restored."))
         $run.Output | Should -Not -Match '\.ps1:\d'   # a message, not a script error from any file
-        $run.Output | Should -Not -Match '== git-config'
+        $run.Output | Should -Not -Match '== [a-z-]+: '   # no step ran
         $p.Unpacked | Should -Not -Exist
         @(Get-ChildItem -LiteralPath $p.Temp -Recurse -File).Count | Should -Be 0
     }
@@ -151,7 +155,7 @@ Describe 'Restore.ps1 -Backup refusing' {
         $p = New-Profile
         New-Item -ItemType Directory -Path $p.Unpacked | Out-Null
         Set-Content -LiteralPath (Join-Path $p.Unpacked 'keep.txt') -Value 'mine' -Encoding ASCII
-        $run = Invoke-Restore $p -Arguments @('-Steps', 'git-config')
+        $run = Invoke-Restore $p -Arguments @('-Steps', 'app-data')
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Match "in the way and wasn't unpacked by Hopover; move it, then try again\. Nothing was restored\."
         $run.Output | Should -Not -Match '\.ps1:\d'   # a message, not a script error from any file
@@ -163,6 +167,6 @@ Describe 'Restore.ps1 -Backup refusing' {
         $run = Invoke-Restore $p -Arguments @('-DryRun', '-DataDir', (Join-Path $p.Home 'elsewhere'))
         $run.ExitCode | Should -Not -Be 0
         $run.Output | Should -Match 'leave out -DataDir and -MigrationRoot'
-        $run.Output | Should -Not -Match '== git-config'
+        $run.Output | Should -Not -Match '== [a-z-]+: '   # no step ran
     }
 }
