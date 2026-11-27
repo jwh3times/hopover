@@ -145,7 +145,7 @@ Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.c
 
 ## Windows scripts
 
-All of them take `-DataDir`; settings come from the [Options](#options) and parameters override them.
+All of them but `Hopover.ps1` take `-DataDir`; settings come from the [Options](#options) and parameters override them.
 
 ### Hopover.cmd and Hopover.ps1 (both)
 
@@ -154,8 +154,8 @@ Hopover's home page, in your browser: **Back up**, **Check I'm ready** and **Res
 - **Back up** asks for the Backup's name, a password (typed twice; **Show** shows it, and **Suggest one** makes one of four random words) and where to save it (type a whole folder such as `E:\Backups`, or **Choose…** one). It runs the same `New-Backup.ps1` as the command line, so it makes the same Backup. Steps that need administrator rights (drivers) are left out with a note; run `New-Backup.ps1` elevated to include them.
 - **It runs in the background.** Closing the browser tab doesn't stop it, and opening Hopover again shows how it's going. Only closing Hopover's window, or **Stop…** confirmed on the page, ends it; either way its working copy is removed, and so is the Backup unless it had finished packing.
 - **One Hopover at a time.** Starting it again while it runs just opens the page again.
-- Like the restore plan page, it's served on `http://localhost` only (from port 8765, or the next free one), every request needs a token that changes each run, and the page can reach nothing but Hopover itself. The token is in the address Hopover opens, not in the page, so another user signed in to the same PC can't use it; a page opened without it says to start Hopover again. Hopover makes no network request of its own except downloading 7-Zip.
-- **Options:** `-Port`, `-NoBrowser` (`Hopover.cmd` passes them on).
+- Like the restore plan page, it's served on `http://localhost` only (from port 8765, or the next free one), every request to its API needs a token that changes each run, and the page can reach nothing but Hopover itself. The token is in the address Hopover opens, not in the page, so another user signed in to the same PC can't use it; a page opened without it says to start Hopover again. Hopover makes no network request of its own except downloading 7-Zip.
+- **Options:** `-Port`, `-NoBrowser` (`Hopover.cmd` passes them on). It takes no `-DataDir`: it uses the data folder from `HOPOVER_DATA`, else `data\`.
 
 ### New-Backup.ps1 (old PC)
 
@@ -170,7 +170,7 @@ Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts belo
 - **Inside it:** the exports as a data folder (`data\`, with the Options it was made with as `data\config.json`, and your `restore-plan.json` and `NOTES.md` if you have them), the extras (`extras\`), the drivers (`drivers\`) and `hopover.json`, which records the format version, when and where the Backup was made, whether it's encrypted, and every app by its catalog key with its winget or Chocolatey id. Any 7-Zip opens it with the password.
 - **7-Zip:** 7-Zip's `7zr.exe`, pinned by version and SHA-256 in `lib\7zip.json`. It's downloaded to `%LOCALAPPDATA%\Hopover\bin` on first use, and a file whose hash differs is refused.
 - **Your data folder is only read.** The staging folder (under `%TEMP%`, or `-StagingDir`) is removed afterwards, and an existing Backup with the same name is never overwritten.
-- **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`.
+- **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`, `-EventLog <file>` (also append progress events to that file, one JSON object per line; Hopover's page runs it this way).
 
 To restore on a new Windows PC: `.\Restore.ps1 -Backup "E:\<name>.hopover.7z"` (see [Restore.ps1](#restoreps1-new-windows-pc)).
 

@@ -5,8 +5,9 @@
 - `README.md`: what Hopover is, what each script does, how to capture a PC and restore it on
   Windows or Linux, and the configuration; for people running the tool. Update when a script, a
   parameter, an option or where options are read from (`config.example.json`,
-  `Get-ConfigDefaults` and `Get-Options` in `lib/Common.ps1`), a restore step (`STEPS` in `linux/restore_linux.py`) or the catalog format
-  changes.
+  `Get-ConfigDefaults` and `Get-Options` in `lib/Common.ps1`), a restore step (`STEPS` in `linux/restore_linux.py`), the catalog format,
+  or what the page does (`ui/index.html`, the page API in `tests/api-cases.json`, the jobs in
+  `lib/Jobs.ps1`) changes.
 - `CHECKLIST.md`: the step-by-step order for moving a PC, from capture to wipe to restore. Update
   when a script is added or removed, or when `Test-WipeReady.ps1` checks something new.
 - `CHANGELOG.md`: one dated section per version a merge mints, stamped by the release workflow's
@@ -25,7 +26,8 @@
   rewrite.
 - `AGENTS.md`: guidance for every coding agent: the layout, the private companion, the rules for
   changes, the commands, the development flow and the agent skills. Update when a command, a
-  folder or a cross-file rule (plan keys, PowerShell 5.1 traps) changes, or when
+  folder or a cross-file rule (plan keys, the page API contract in `tests/api-cases.json`,
+  PowerShell 5.1 traps, `.gitattributes` line endings) changes, or when
   `.claude/settings.json` does. The `shared:` blocks are written by `scripts/sync-agents.mjs`;
   never edit them here.
 - `CLAUDE.md`: imports `AGENTS.md` for Claude Code. `owner-only`.
@@ -49,6 +51,8 @@
 - Restore steps in `README.md`: `STEPS` in `linux/restore_linux.py`.
 - Configuration in `README.md`: `config.example.json`, and `Get-ConfigDefaults` and
   `Get-Options` in `lib/Common.ps1` (where options are read from, and in what order).
+- Hopover's page in `README.md` (Back up, background jobs, the token): `tests/api-cases.json`,
+  `Hopover.ps1`, `lib/Jobs.ps1` and `MSG` in `ui/index.html`.
 - CI jobs and their commands in `AGENTS.md` and `docs/agents/open-pr.md`:
   `.github/workflows/ci.yml`.
 - Dev tools in `docs/agents/dependabot.md`: `pyproject.toml` and `tests/Invoke-PowerShellChecks.ps1`.
