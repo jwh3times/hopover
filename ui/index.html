@@ -605,7 +605,7 @@ const MSG = {
   'working': d => `Working… ${d.percent}%. You can close this tab; opening Hopover again comes back here.`,
   'stop-title': d => `Stop the ${t('kind-' + d.kind)}?`,
   'stop-text': d => `${d.kind === 'backup' ? 'The Backup won\'t be made, and what' : 'What'} Hopover has done so far is removed. You can start again afterwards.`,
-  'not-yet-ready-check': () => 'Check I\'m ready comes in a later version. For now, run .\\Test-WipeReady.ps1 in PowerShell, from the Hopover folder.',
+  'not-yet-ready-check': () => 'Check I\'m ready comes in a later version. For now, run .\\Test-WipeReady.ps1 -Backup "<your Backup file>" in PowerShell, from the Hopover folder.',
   'not-yet-restore': () => 'Restore from the page comes in a later version. For now, run .\\Restore.ps1 -Backup "<the .hopover.7z file>" in PowerShell, from the Hopover folder.',
   'password-warning': () => 'Hopover can\'t recover a forgotten password, and nobody else can either. Keep it in your password manager.'
 };
