@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # tests/Backup.Tests.ps1 opens a Backup made here with linux/backup.py, run by uv's Python.
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
       - name: Install PSScriptAnalyzer and Pester (Windows PowerShell 5.1)
         shell: powershell
         run: |
@@ -44,11 +47,14 @@ jobs:
   # 3.10) and its bash bootstrap. ruff and shellcheck are pinned in uv.lock. The unit tests run
   # twice: on .python-version's 3.15, the newest Python, and on 3.10, the floor, in an isolated
   # environment that needs nothing installed (the script and its tests use the standard library).
-  # ruff's py310 target rejects syntax 3.10 lacks.
+  # ruff's py310 target rejects syntax 3.10 lacks. The Backup module's tests open real Backups
+  # with the distro's 7-Zip, so the runner gets the 7zip package restore-linux.sh installs.
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install 7-Zip
+        run: sudo apt-get update && sudo apt-get install -y 7zip
       # No python-version input: uv reads .python-version here and locally.
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - run: uv sync --frozen

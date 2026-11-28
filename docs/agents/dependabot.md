@@ -5,9 +5,10 @@ and in the scheduled review. These facts apply to this repository only.
 
 ## Stack
 
-Hopover itself has one runtime dependency: 7-Zip's `7zr.exe`, which `New-Backup.ps1` and `Restore.ps1 -Backup`
-download on first use, pinned by version, URL and SHA-256 in `lib/7zip.json`. Dependabot does not track it: it
-moves by hand, with the new release asset's digest. Otherwise the Windows scripts are Windows
+Hopover itself has one runtime dependency, 7-Zip. On Windows it is 7-Zip's `7zr.exe`, which `New-Backup.ps1` and
+`Restore.ps1 -Backup` download on first use, pinned by version, URL and SHA-256 in `lib/7zip.json`. Dependabot does
+not track it: it moves by hand, with the new release asset's digest. On Linux it is the distro's own `7zip` (or
+`p7zip`) package, which `restore-linux.sh` installs and nothing pins. Otherwise the Windows scripts are Windows
 PowerShell 5.1 and PowerShell 7 with built-in modules only, and `linux/restore_linux.py` uses
 Python's standard library on whatever `python3` the distro ships (3.10 and up). Dependabot updates
 only the development tools and the workflows' actions.
@@ -22,9 +23,9 @@ PSScriptAnalyzer (1.25.0) and Pester (6.2.0) come from the PowerShell Gallery, w
 does not cover: their versions are pinned in `tests/Invoke-PowerShellChecks.ps1` and in `ci.yml`'s
 install step, and move by hand, together.
 
-`.github/workflows/ci.yml` runs four jobs, all required on `main`: `windows` (installs the two
-modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and in PowerShell 7),
-`linux` (`uv sync --frozen`, `ruff check`, `ruff format --check`, shellcheck, `bash -n` and
+`.github/workflows/ci.yml` runs four jobs, all required on `main`: `windows` (sets up uv, whose Python
+runs `linux/backup.py` in `tests/Backup.Tests.ps1`, installs the two modules, then `tests/Invoke-PowerShellChecks.ps1` in Windows PowerShell 5.1 and in PowerShell 7),
+`linux` (the distro's `7zip` package, then `uv sync --frozen`, `ruff check`, `ruff format --check`, shellcheck, `bash -n` and
 `python -m unittest discover -s linux/tests` on Python 3.15 from `.python-version` and again on
 3.10, the floor), `changelog`
 (`node scripts/check-changelog.mjs`) and `agents` (the repository scripts on the Node in `.nvmrc`).

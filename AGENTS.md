@@ -9,7 +9,7 @@ Hopover captures a Windows PC's apps, settings and data and restores them onto a
 - Windows scripts (`*.ps1`) live in the repo root and share `lib\Common.ps1` (data folder, Options, helpers). `lib\Backup.ps1` is the Backup module (make, test, find, unpack), with the 7-Zip it uses pinned by SHA-256 in `lib\7zip.json`; its tests, `tests\Restore.Tests.ps1` and `tests\Api.Tests.ps1` download that `7zr.exe` into Pester's `TestDrive` on every run, so they need the network.
 - `ui\index.html` is the one page: `Hopover.ps1` (started by `Hopover.cmd`) serves it on its home view, `Show-RestorePlan.ps1` on its restore plan view. Both use `lib\Server.ps1` (localhost listener, per-run token, Content-Security-Policy). `lib\Jobs.ps1` runs a Back up as a job in a child process, in a kill-on-close job object, with its progress as JSON events in `%LOCALAPPDATA%\Hopover\jobs\<id>\events.jsonl`.
 - `catalog\` holds data, not code: `app-data.json` (app-data folders to back up), `linux-packages.json` (Windows app to Linux install methods), `linux-repos.json` (vendor repos, installer scripts, prerequisites).
-- `linux\` holds `restore-linux.sh` (bash bootstrap) and `restore_linux.py` (the restore; Python 3.10+, standard library only), plus `tests\`.
+- `linux\` holds `restore-linux.sh` (bash bootstrap, which installs `python3` and `curl`, and the distro's 7-Zip for `--backup`), `restore_linux.py` (the restore; Python 3.10+, standard library only) and `backup.py` (the Backup module on Linux: find, test and unpack, with the distro's `7z`, `7zz` or `7za`), plus `tests\`. `tests\test_backup.py` opens real Backups: it needs a 7-Zip on `PATH` (or `HOPOVER_TEST_7Z`, such as the cached `7zr.exe` on Windows), skips without one, and fails without one in CI.
 - `tests\` holds the Pester tests for the Windows scripts and `Invoke-PowerShellChecks.ps1`.
 - `scripts\` holds the agent and release scripts from `jwh3times/skills` (see [Agent skills](#agent-skills)); they need Node and nothing else.
 
@@ -32,6 +32,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 - The page API is a contract: `tests/api-cases.json` holds its request and response cases, which every Hopover server runs (`tests/Api.Tests.ps1` for `Hopover.ps1`). An API change changes that file, the page and every server together. Job events and API errors carry a message code; the page's one English string table (`MSG` in `ui/index.html`) words each code, so a new code needs an entry there.
 - `Restore.ps1` runs only the steps of its prompt's pass, and GitHub's Windows runners are elevated, so a test that runs it must pass from either prompt (`tests/Restore.Tests.ps1` restores `app-data`, which runs in both, from an extras item of the current pass).
 - Options (`options.json`, layered over a data folder's `config.json`) are read by `Get-Options` in `lib/Common.ps1` and `load_options` in `restore_linux.py`, with the same keys and the same merge rule; change both together, and their tests.
+- A Backup is read the same way by `lib/Backup.ps1` and `linux/backup.py`: the `.hopover.7z` suffix, the newest `formatVersion` it restores (`$BackupFormatVersion`, `FORMAT_VERSION`), the unpacked copy's `.hopover-unpacked.json` marker, the result names (`ok`, `wrong-password`, `password-needed`, `missing`, `damaged`, `newer`) and the password on 7-Zip's standard input only; change both together, with their tests. `tests/Backup.Tests.ps1` opens a Backup made by the PowerShell module with the Python one, through `uv`.
 - An app's catalog key is found the same way by `Resolve-CatalogKey` in `lib/Backup.ps1` and `Catalog.lookup` in `restore_linux.py` (package key, then alias, then pattern, then `windowsOnly`); change both together. The extras items that hold secrets (`$SecretExtras` in `lib/Backup.ps1`) are named by `Backup-Extras.ps1` and `catalog/app-data.json`: a new secret-holding item goes in that list, or an unencrypted Backup carries it.
 - A PSScriptAnalyzer rule is excluded in `PSScriptAnalyzerSettings.psd1` only with the reason beside it; a ruff rule likewise in `pyproject.toml`.
 
@@ -40,7 +41,7 @@ A user's exports and `config.json` live in `data\`, which is usually a separate 
 The fast checks, which CI runs on every pull request:
 
 ```bash
-powershell -NoProfile -File tests/Invoke-PowerShellChecks.ps1   # parse, PSScriptAnalyzer, Pester in 5.1
+powershell -NoProfile -File tests/Invoke-PowerShellChecks.ps1   # parse, PSScriptAnalyzer, Pester in 5.1 (Backup.Tests.ps1 needs uv)
 pwsh -NoProfile -File tests/Invoke-PowerShellChecks.ps1         # the same in PowerShell 7
 uv sync --frozen                                                # ruff and shellcheck, pinned in uv.lock
 uv run ruff check . && uv run ruff format --check .             # Python lint and format
@@ -71,11 +72,11 @@ Slower checks, run by hand when a change touches what they cover:
 # Linux catalog: structure, vendor URLs, GitHub asset patterns (reaches the network)
 powershell -File linux\tests\Test-LinuxCatalog.ps1
 
-# Linux restore in Docker (dry run on six distros; -Install -Only <ids> really installs)
+# Linux restore in Docker (dry run on eight images of six distros; -Install -Only <ids> really installs)
 powershell -File linux\tests\Test-LinuxRestore.ps1
 ```
 
-`Test-LinuxRestore.ps1` needs Docker Desktop and a data folder; its containers run as root, so AUR, Flatpak and systemd steps only print what they'd do there.
+`Test-LinuxRestore.ps1` needs Docker Desktop and the network; it restores a fixture Backup it makes with `lib/Backup.ps1` (or `-Backup <file>`, or `-DataDir <folder>`), and its logs are UTF-16 (Windows PowerShell 5.1's `*>`), so read them with `Select-String`, not `grep`. Its containers run as root, so AUR, Flatpak and systemd steps only print what they'd do there.
 
 Once a PR is open, read [docs/agents/merging.md](docs/agents/merging.md).
 
