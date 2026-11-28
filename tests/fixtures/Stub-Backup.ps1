@@ -15,7 +15,8 @@ param(
     [int]$SplitMB = 0,
     [string]$StagingDir,
     [string]$DataDir,
-    [string]$EventLog
+    [string]$EventLog,
+    [string]$AdminHelper
 )
 
 $ErrorActionPreference = 'Stop'

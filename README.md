@@ -123,7 +123,7 @@ Untick anything you don't want, or turn a whole step off, then click **Save plan
 
 ## Options
 
-Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.config/hopover/options.json`, or under `$XDG_CONFIG_HOME`). A `config.json` in the data folder is read as well, so a data folder set up before Options keeps working: each script starts from the defaults, applies `config.json`, then `options.json` over it key by key (one level deep for the sections), and its own parameters win over all of them. [config.example.json](config.example.json) lists every option. Every key is optional except `migrationRoot`.
+Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.config/hopover/options.json`, or under `$XDG_CONFIG_HOME`). A `config.json` in the data folder is read as well, so a data folder set up before Options keeps working: each script starts from the defaults, applies `config.json`, then `options.json` over it key by key (one level deep for the sections), and its own parameters win over all of them. [config.example.json](config.example.json) lists every option. Every key is optional except `migrationRoot`. The `HOPOVER_OPTIONS` environment variable names another file to read in place of `options.json`; a Back up hands yours to its window with administrator rights this way, since that window may run as another account.
 
 `options.json` sits on the Windows drive, which the reinstall erases. A Backup carries the Options it was made with (as its `data\config.json`), and `Restore.ps1 -Backup` reads them from there. To restore without a Backup, keep them in the data folder's `config.json` (as in [Getting started](#getting-started)), which survives with the rest of your data folder.
 
@@ -153,7 +153,7 @@ All of them but `Hopover.ps1` take `-DataDir`; settings come from the [Options](
 
 Hopover's home page, in your browser: **Back up**, **Check I'm ready** and **Restore** ([ADR 0003](docs/adr/0003-powershell-and-a-browser-page.md)). Double-click `Hopover.cmd`: it starts `Hopover.ps1` in Windows PowerShell 5.1 with the script execution policy bypassed for that run, so it works on a fresh install whatever the policy is, in a minimized window titled "Hopover is running — close this to stop".
 
-- **Back up** asks for the Backup's name, a password (typed twice; **Show** shows it, and **Suggest one** makes one of four random words) and where to save it (type a whole folder such as `E:\Backups`, or **Choose…** one). It runs the same `New-Backup.ps1` as the command line, so it makes the same Backup. Steps that need administrator rights (drivers) are left out with a note; run `New-Backup.ps1` elevated to include them.
+- **Back up** asks for the Backup's name, a password (typed twice; **Show** shows it, and **Suggest one** makes one of four random words) and where to save it (type a whole folder such as `E:\Backups`, or **Choose…** one). It runs the same `New-Backup.ps1` as the command line, so it makes the same Backup. Steps that need administrator rights (drivers) run first: Windows asks for the rights once, as the Back up starts, and everything else runs as you, so the files it writes belong to you. Say No and the Backup is made without the drivers, with a note that says so; if the window with administrator rights stops before it saves them, the note says where its log is (`admin-steps.log`, in the job's folder under `%LOCALAPPDATA%\Hopover\jobs`).
 - **It runs in the background.** Closing the browser tab doesn't stop it, and opening Hopover again shows how it's going. Only closing Hopover's window, or **Stop…** confirmed on the page, ends it; either way its working copy is removed, and so is the Backup unless it had finished packing.
 - **One Hopover at a time.** Starting it again while it runs just opens the page again.
 - Like the restore plan page, it's served on `http://localhost` only (from port 8765, or the next free one), every request to its API needs a token that changes each run, and the page can reach nothing but Hopover itself. The token is in the address Hopover opens, not in the page, so another user signed in to the same PC can't use it; a page opened without it says to start Hopover again. Hopover makes no network request of its own except downloading 7-Zip.
@@ -161,7 +161,7 @@ Hopover's home page, in your browser: **Back up**, **Check I'm ready** and **Res
 
 ### New-Backup.ps1 (old PC)
 
-Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts below capture. It runs `Catalog-InstalledApps.ps1`, `Export-Settings.ps1`, `Backup-Extras.ps1` and, from an elevated prompt, `Save-Drivers.ps1` into a staging folder, then packs it with 7-Zip ([ADR 0002](docs/adr/0002-one-encrypted-backup-file.md)).
+Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts below capture. It runs `Catalog-InstalledApps.ps1`, `Export-Settings.ps1`, `Backup-Extras.ps1` and `Save-Drivers.ps1` into a staging folder, then packs it with 7-Zip ([ADR 0002](docs/adr/0002-one-encrypted-backup-file.md)).
 
 ```powershell
 .\New-Backup.ps1 -Destination E:\                                  # asks for the password twice
@@ -169,7 +169,8 @@ Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts belo
 ```
 
 - **Encrypted by default:** AES-256 with the file names hidden too. It asks for a password (at least 8 characters) twice; a forgotten password can't be recovered. A program can pipe the password in instead: `... | powershell -File .\New-Backup.ps1 ...`. The password reaches 7-Zip only on its standard input, never a command line. `-NoEncryption` makes a Backup anyone can open, so it leaves out the extras that hold passwords and keys (`dev-local-files`, your local `.env` and secret files, and `app-ssh`, your `.ssh` folder) and says so.
-- **Inside it:** the exports as a data folder (`data\`, with the Options it was made with as `data\config.json`, and your `restore-plan.json` and `NOTES.md` if you have them), the extras (`extras\`), the drivers (`drivers\`) and `hopover.json`, which records the format version, when and where the Backup was made, whether it's encrypted, and every app by its catalog key with its winget or Chocolatey id. Any 7-Zip opens it with the password.
+- **Administrator rights, asked for once.** Saving the drivers needs them. From a normal prompt, Windows asks for them as the Back up starts, and the drivers are saved first, in a window of their own (`Invoke-AdminSteps.ps1`), which keeps what it printed in `%TEMP%\hopover-admin-steps-<time>.log`; everything else runs as you. Say No and the Backup is made without the drivers. From PowerShell opened as administrator nothing is asked.
+- **Inside it:** the exports as a data folder (`data\`, with the Options it was made with as `data\config.json`, and your `restore-plan.json` and `NOTES.md` if you have them), the extras (`extras\`), the drivers (`drivers\`, with their device list in `drivers\README.md` and, for the restore plan, `data\settings\windows\drivers.md`) and `hopover.json`, which records the format version, when and where the Backup was made, whether it's encrypted, and every app by its catalog key with its winget or Chocolatey id. Any 7-Zip opens it with the password.
 - **7-Zip:** 7-Zip's `7zr.exe`, pinned by version and SHA-256 in `lib\7zip.json`. It's downloaded to `%LOCALAPPDATA%\Hopover\bin` on first use, and a file whose hash differs is refused.
 - **Your data folder is only read.** The staging folder (under `%TEMP%`, or `-StagingDir`) is removed afterwards, and an existing Backup with the same name is never overwritten.
 - **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`, `-EventLog <file>` (also append progress events to that file, one JSON object per line; Hopover's page runs it this way).
@@ -220,7 +221,7 @@ Archives what neither git nor a cloud backup usually keeps to `<migrationRoot>\e
 
 ### Save-Drivers.ps1 (old PC, elevated)
 
-Exports every third-party driver with `pnputil` to `<migrationRoot>\drivers`, including the network drivers so the new install can get online. It renames any earlier export instead of overwriting it, and writes `settings\windows\drivers.md`.
+Exports every third-party driver with `pnputil` to `<migrationRoot>\drivers`, including the network drivers so the new install can get online. It renames any earlier export instead of overwriting it, and writes the device list to `README.md` there, with a copy in `settings\windows\drivers.md` when the data folder already has that folder.
 
 ### Test-WipeReady.ps1 (old PC)
 
@@ -383,7 +384,7 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | --- | --- |
 | `Hopover.cmd`, `*.ps1` | Hopover's launcher, and the Windows scripts above |
 | `lib\Common.ps1` | Shared helpers (data folder, Options) |
-| `lib\Server.ps1`, `lib\Jobs.ps1` | The localhost page server, and the jobs (Back up) it runs in the background with their progress events |
+| `lib\Server.ps1`, `lib\Jobs.ps1` | The localhost page server, and the jobs (Back up) it runs in the background with their progress events; a job's steps that need administrator rights run in `Invoke-AdminSteps.ps1`, behind one prompt |
 | `lib\Backup.ps1`, `lib\7zip.json` | The Backup module (make, test, find and unpack Backups) and the pinned 7-Zip it uses |
 | `lib\version.txt` | A placeholder that `git archive` fills with the tag, so a release zip records its version in each Backup's `hopover.json` (a clone asks `git describe` instead) |
 | `ui\index.html` | The page `Hopover.ps1` and `Show-RestorePlan.ps1` serve |

@@ -19,6 +19,11 @@
         -NoBrowser       don't open the page
         -BackupScript    for tests: the script a Back up runs instead of New-Backup.ps1
                          (same parameters, the password on standard input)
+        -AdminHelper     for tests: the script a job runs instead of the administrator helper,
+                         Invoke-AdminSteps.ps1, without asking for administrator rights
+
+    The page and a job run as you, so what they write belongs to you. A job's steps that need
+    administrator rights run in one helper, and Windows asks for the rights once, as the job starts.
 
     Works in Windows PowerShell 5.1 (a fresh install) and PowerShell 7.
 #>
@@ -27,7 +32,8 @@
 param(
     [int]$Port = 8765,
     [switch]$NoBrowser,
-    [string]$BackupScript
+    [string]$BackupScript,
+    [string]$AdminHelper
 )
 
 $ErrorActionPreference = 'Stop'
@@ -140,6 +146,7 @@ function Start-BackupJob($Ctx, $Body) {
     Add-JobEvent -Path $events -Type 'job-started' -Code 'backup-started' -Details @{ name = $name; destination = $destination }
 
     $arguments = @('-Destination', $destination, '-Name', $name, '-StagingDir', (Join-Path $dir 'staging'), '-EventLog', $events)
+    if ($AdminHelper) { $arguments += @('-AdminHelper', $AdminHelper) }
     # The command line's -Steps, which the tests use to make a quick Backup; the page sends none,
     # so every step runs. A trailing comma keeps an empty list a list: New-Backup.ps1 runs no step.
     if ($Body.PSObject.Properties.Name -contains 'steps') {

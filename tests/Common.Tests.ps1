@@ -25,8 +25,9 @@ Describe 'Get-Options' {
         $savedLocalAppData = $env:LOCALAPPDATA
         $env:LOCALAPPDATA = $appData
         $optionsFile = Join-Path $appData 'Hopover\options.json'
+        Remove-Item Env:\HOPOVER_OPTIONS -ErrorAction SilentlyContinue
     }
-    AfterEach { $env:LOCALAPPDATA = $savedLocalAppData }
+    AfterEach { $env:LOCALAPPDATA = $savedLocalAppData; Remove-Item Env:\HOPOVER_OPTIONS -ErrorAction SilentlyContinue }
 
     It 'returns the defaults when neither options.json nor config.json exists' {
         $opt = Get-Options $dir
@@ -63,6 +64,16 @@ Describe 'Get-Options' {
         $opt['linux']['nodeMajor'] | Should -Be 24
         $opt['_exists'] | Should -BeTrue
         $opt['_file'] | Should -Be $optionsFile
+    }
+
+    It 'reads the options file HOPOVER_OPTIONS names instead of this account''s, as the elevated helper does' {
+        # The helper runs as whoever approved the prompt: their own options.json is not the user's.
+        Set-Content -LiteralPath $optionsFile -Value '{ "devRoot": "E:\\admin" }' -Encoding UTF8
+        $users = Join-Path $dir 'users-options.json'
+        Set-Content -LiteralPath $users -Value '{ "devRoot": "D:\\work" }' -Encoding UTF8
+        $env:HOPOVER_OPTIONS = $users
+        Get-OptionsPath | Should -Be $users
+        (Get-Options $dir)['devRoot'] | Should -Be 'D:\work'
     }
 
     It 'falls back to USERPROFILE\AppData\Local when LOCALAPPDATA is unset' {

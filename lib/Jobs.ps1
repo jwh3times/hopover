@@ -205,11 +205,17 @@ namespace Hopover {
 # Starts a job's script in the same PowerShell, its password (if any) on standard input and never
 # on the command line, in a kill-on-close job object. Its console output goes to Hopover's window.
 # The script is in the job object before it reads its password, so before it starts anything.
-function Start-JobProcess([string]$ScriptPath, [string[]]$Arguments, [securestring]$Password) {
-    Initialize-JobObjectType
+# How to run one of Hopover's scripts in the same PowerShell as this one.
+function New-ScriptStartInfo([string]$ScriptPath, [string[]]$Arguments) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = (Get-Process -Id $PID).Path
     $psi.Arguments = Join-ProcessArguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + @($Arguments))
+    $psi
+}
+
+function Start-JobProcess([string]$ScriptPath, [string[]]$Arguments, [securestring]$Password) {
+    Initialize-JobObjectType
+    $psi = New-ScriptStartInfo $ScriptPath $Arguments
     $psi.CreateNoWindow = $false
     $handle = [Hopover.JobObject]::Create()
     $p = Start-InputProcess $psi
@@ -217,6 +223,102 @@ function Start-JobProcess([string]$ScriptPath, [string[]]$Arguments, [securestri
     catch { try { $p.Kill() } catch { }; [Hopover.JobObject]::Close($handle); throw }
     Send-ProcessPassword $p $Password
     [pscustomobject]@{ Process = $p; Handle = $handle }
+}
+
+# ---------------------------------------------------------------------------
+# Administrator rights: a job runs as the user who started it, so what it writes belongs to them.
+# The steps that need administrator rights run in one elevated helper, Invoke-AdminSteps.ps1,
+# started through the administrator prompt (UAC) once per job. It writes to the job's event log.
+# ---------------------------------------------------------------------------
+
+# The steps of each kind of job that need administrator rights.
+$JobAdminSteps = @{ backup = @('drivers') }
+
+# Points this process, and every process it starts, at the user's options file. The helper runs as
+# whoever approved the administrator prompt, possibly another account with Options of its own, so
+# it is handed the user's file and reads only that.
+function Use-UserOptions([string]$OptionsFile) { if ($OptionsFile) { $env:HOPOVER_OPTIONS = $OptionsFile } }
+
+# Runs $Steps in the elevated helper, and waits for it. The helper puts each step's files in
+# $StagingDir, reads the user's Options and the data folder $DataDir, and ends if this process
+# does (a stopped job). Its window closes when it ends, so it writes what its steps printed to Log
+# too: beside the job's event log, or in this user's TEMP. $AdminHelper, for tests, is a script
+# run in its place without the prompt. Ran is false when the prompt was declined (or the helper
+# couldn't start: Reason says why). Ran says the helper ran, not that its steps did: Done lists the
+# steps whose folder it left in $StagingDir.
+function Invoke-AdminHelper {
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Mandatory)][string[]]$Steps,
+        [Parameter(Mandatory)][string]$DataDir,
+        [Parameter(Mandatory)][string]$StagingDir,
+        [string]$EventLog,
+        [string]$AdminHelper
+    )
+    $helperScript = if ($AdminHelper) { $AdminHelper } else { Join-Path $ToolRoot 'Invoke-AdminSteps.ps1' }
+    $log = if ($EventLog) { Join-Path (Split-Path -Parent $EventLog) 'admin-steps.log' } else { Join-Path $env:TEMP "hopover-admin-steps-$(Get-Date -Format 'yyyyMMdd-HHmmss').log" }
+    $arguments = @('-Steps', ($Steps -join ','), '-DataDir', $DataDir, '-StagingDir', $StagingDir,
+        '-OptionsFile', (Get-OptionsPath), '-JobPid', $PID, '-LogFile', $log)
+    if ($EventLog) { $arguments += @('-EventLog', $EventLog) }
+    $psi = New-ScriptStartInfo $helperScript $arguments
+    if ($AdminHelper) {
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+    } else {
+        $psi.UseShellExecute = $true
+        $psi.Verb = 'runas'
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Minimized
+    }
+    # 1223 (ERROR_CANCELLED) is what Windows gives when the prompt is declined.
+    try { $p = [System.Diagnostics.Process]::Start($psi) }
+    catch {
+        $e = $_.Exception.GetBaseException()
+        $reason = if ($e -is [System.ComponentModel.Win32Exception] -and $e.NativeErrorCode -eq 1223) { '' } else { $e.Message }
+        return [pscustomobject]@{ Ran = $false; ExitCode = $null; Reason = $reason; Log = $null; Done = @() }
+    }
+    try {
+        $p.WaitForExit()
+        $exit = $p.ExitCode
+    } finally { $p.Dispose() }
+    # The tests' stand-in declines the prompt by exiting with the same error.
+    if ($exit -eq 1223) { return [pscustomobject]@{ Ran = $false; ExitCode = $exit; Reason = ''; Log = $null; Done = @() } }
+    $done = @($Steps | Where-Object { Test-Path -LiteralPath (Join-Path $StagingDir $_) -PathType Container })
+    [pscustomobject]@{ Ran = $true; ExitCode = $exit; Reason = ''; Log = $log; Done = $done }
+}
+
+# Runs a step's script in a process of its own, in a kill-on-close job object, with what it prints
+# going to $LogFile as well as this window once it ends. Returns the running step: Wait-StepProcess
+# waits for it.
+function Start-StepProcess([string]$ScriptPath, [string[]]$Arguments, [string]$LogFile) {
+    Initialize-JobObjectType
+    $psi = New-ScriptStartInfo $ScriptPath $Arguments
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = $Utf8
+    $psi.StandardErrorEncoding = $Utf8
+    $handle = [Hopover.JobObject]::Create()
+    $p = [System.Diagnostics.Process]::Start($psi)
+    try { [Hopover.JobObject]::Assign($handle, $p.Handle) }
+    catch { try { $p.Kill() } catch { }; [Hopover.JobObject]::Close($handle); throw }
+    [pscustomobject]@{ Process = $p; Handle = $handle; Out = $p.StandardOutput.ReadToEndAsync(); Err = $p.StandardError.ReadToEndAsync(); Log = $LogFile }
+}
+
+# Waits for a step started by Start-StepProcess, ending it early when & $Abandon says to. Returns
+# its exit code, or $null when it was ended. Either way, what it printed is shown and logged.
+function Wait-StepProcess($Step, [scriptblock]$Abandon) {
+    while (-not $Step.Process.WaitForExit(500)) {
+        if (& $Abandon) { Stop-JobProcess $Step; return $null }
+    }
+    if ($Step.Out.Wait(10000) -and $Step.Err.Wait(10000)) {
+        $text = $Step.Out.Result + $Step.Err.Result
+        if ($text) { Write-Host $text.TrimEnd() }
+        if ($Step.Log) { [IO.File]::AppendAllText($Step.Log, $text, $Utf8) }
+    }
+    $exit = $Step.Process.ExitCode
+    Close-JobProcess $Step
+    return $exit
 }
 
 # Ends a job's processes, all of them, and waits for its own to exit.

@@ -1,7 +1,8 @@
 {
   "$comment": [
     "The page API's request and expected-response cases (seam 2 of spec #12). Every Hopover server runs them: tests/Api.Tests.ps1 for Hopover.ps1, and the Linux server's own runner once it exists. A change to the API changes this file, and every server, together.",
-    "Each case starts a fresh server for a user with nothing on record, whose Back up runs a stand-in for the real one: 'backup' says which. 'finishes' makes a pretend Backup and ends; 'waits' leaves a staging copy and a part-written Backup, then waits to be stopped.",
+    "Each case starts a fresh server for a user with nothing on record, whose Back up runs a stand-in for the real one: 'backup' says which. 'finishes' makes a pretend Backup and ends; 'waits' leaves a staging copy and a part-written Backup, then waits to be stopped; 'real' runs the server's real Back up. 'options' are written to the user's options file before the server starts.",
+    "The elevated helper, which runs the steps that need administrator rights, is always a stand-in started without the administrator prompt. It acts as though another administrator approved the prompt, with Options of their own, and reports what it was given as the event { type: 'message', code: 'helper-given', details: { steps, devRoot } }, devRoot being the Option it read. For each step it runs, it sends step-started and step-finished and leaves a file in that step's folder of the Backup. With 'helper': 'declines' it stands for a declined prompt instead, and with 'helper': 'fails' for a helper that failed before its first step; either way it does nothing.",
     "A step sends 'request' (token: false leaves out this run's token), repeats it while 'until' doesn't match (for up to 30 seconds), then checks 'expect', and stores values from the response in 'save' (a dotted path into its JSON). 'files' names paths that must exist ('present') or not ('absent') after the step.",
     "Matching: an object matches when each of its keys does; an array matches when its items match items of the response's array in the same order, others allowed between them, and [] matches only an empty array; a string may hold * wildcards; null matches null or a missing key. '{name}' is replaced by a saved value, or by 'destination' (an empty folder) or 'missing' (a folder that isn't there)."
   ],
@@ -189,6 +190,93 @@
           "expect": { "status": 200, "json": { "job": { "status": "stopped" }, "events": [ { "type": "job-started" }, { "type": "job-finished", "ok": false, "code": "job-stopped" } ] } }
         },
         { "request": { "method": "GET", "path": "/api/state" }, "expect": { "status": 200, "json": { "activeJob": null, "lastJob": { "id": "{job}", "status": "stopped" } } } }
+      ]
+    },
+    {
+      "name": "runs the administrator steps in one helper, with the user's own Options, and shows its events",
+      "backup": "real",
+      "options": { "devRoot": "D:\\work" },
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Admin PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}", "steps": [ "drivers" ] } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "until": { "job": { "status": "finished" } },
+          "expect": {
+            "status": 200,
+            "json": {
+              "job": { "status": "finished" },
+              "events": [
+                { "type": "job-started" },
+                { "type": "step-started", "step": "drivers" },
+                { "type": "message", "code": "helper-given", "details": { "steps": [ "drivers" ], "devRoot": "D:\\work" } },
+                { "type": "step-finished", "step": "drivers", "ok": true },
+                { "type": "step-started", "step": "pack" },
+                { "type": "job-finished", "ok": true, "code": "backup-made" }
+              ]
+            }
+          },
+          "files": { "present": [ "{destination}/Admin PC.hopover.7z" ] }
+        }
+      ]
+    },
+    {
+      "name": "finishes without the administrator steps when the prompt is declined, and says what was left out",
+      "backup": "real",
+      "helper": "declines",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Declined PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}", "steps": [ "drivers" ] } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "until": { "job": { "status": "finished" } },
+          "expect": {
+            "status": 200,
+            "json": {
+              "job": { "status": "finished" },
+              "events": [
+                { "type": "job-started" },
+                { "type": "message", "code": "admin-skipped", "details": { "steps": [ "drivers" ] } },
+                { "type": "step-started", "step": "pack" },
+                { "type": "job-finished", "ok": true, "code": "backup-made" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "finishes without the administrator steps when the helper fails before them, and says where the details are",
+      "backup": "real",
+      "helper": "fails",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/backup", "body": { "name": "Failed PC", "password": "correct horse battery", "passwordAgain": "correct horse battery", "destination": "{destination}", "steps": [ "drivers" ] } },
+          "expect": { "status": 200 },
+          "save": { "job": "job.id" }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/jobs/{job}/events?since=0" },
+          "until": { "job": { "status": "finished" } },
+          "expect": {
+            "status": 200,
+            "json": {
+              "job": { "status": "finished" },
+              "events": [
+                { "type": "job-started" },
+                { "type": "message", "code": "admin-failed", "details": { "steps": [ "drivers" ], "log": "*admin-steps.log" } },
+                { "type": "step-started", "step": "pack" },
+                { "type": "job-finished", "ok": true, "code": "backup-made" }
+              ]
+            }
+          }
+        }
       ]
     }
   ]
