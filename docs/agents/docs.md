@@ -5,7 +5,8 @@
 - `README.md`: what Hopover is, what each script does, how to capture a PC and restore it on
   Windows or Linux, and the configuration; for people running the tool. Update when a script, a
   parameter, an option or where options are read from (`config.example.json`,
-  `Get-ConfigDefaults` and `Get-Options` in `lib/Common.ps1`), a restore step (`STEPS` in `linux/restore_linux.py`), the catalog format,
+  `Get-ConfigDefaults`, `Get-Options` and `Get-OptionsPath` in `lib/Common.ps1`, `options_path`
+  in `linux/restore_linux.py`), a restore step (`STEPS` in `linux/restore_linux.py`), the catalog format,
   or what the page does (`ui/index.html`, the page API in `tests/api-cases.json`, the jobs in
   `lib/Jobs.ps1`) changes.
 - `CHECKLIST.md`: the step-by-step order for moving a PC, from capture to wipe to restore. Update
