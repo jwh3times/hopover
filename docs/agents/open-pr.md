@@ -13,7 +13,9 @@
 - Repo root: `uv run --isolated --no-project --python 3.10 python -m unittest discover -s linux/tests`,
   with the same condition: the unit tests on the 3.10 floor, without touching the project's venv.
 - Repo root: `powershell -NoProfile -File tests/Invoke-PowerShellChecks.ps1`, only when a `*.ps1`
-  or `*.psd1` file changed (parse, PSScriptAnalyzer and Pester in Windows PowerShell 5.1).
+  or `*.psd1` file, or `linux/backup.py`, changed (parse, PSScriptAnalyzer and Pester in Windows
+  PowerShell 5.1; `tests/Backup.Tests.ps1` opens a Backup with `linux/backup.py`, so it needs `uv`
+  on `PATH`).
 - Repo root: `pwsh -NoProfile -File tests/Invoke-PowerShellChecks.ps1`, with the same condition, in
   PowerShell 7.
 - Repo root: `node scripts/sync-agents.mjs --check`, fixed by `node scripts/sync-agents.mjs`,

@@ -474,6 +474,66 @@ Describe 'Find-Backup' {
     }
 }
 
+Describe 'A Backup made here, opened by the Linux Backup module' {
+    # linux/backup.py, run with uv's Python and the same pinned 7zr.exe, the password on its
+    # standard input the way Invoke-SevenZip gives one to any program. On Linux the module runs the
+    # distro's 7-Zip; linux/tests/test_backup.py covers that.
+    BeforeAll {
+        $uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+        if (-not $uv) { throw 'These tests run linux/backup.py with uv; install uv (https://docs.astral.sh/uv/).' }
+        $module = Join-Path $root 'linux\backup.py'
+        function Invoke-LinuxModule([string[]]$Arguments, [securestring]$Password) {
+            $r = Invoke-SevenZip -SevenZip $uv -Arguments (@('run', '--no-project', '--isolated', 'python', $module, '--seven-zip', $SevenZip) + $Arguments) -Password $Password -WorkingDirectory $root
+            $last = @($r.Stdout -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -Last 1
+            if (-not $last) { throw "linux/backup.py printed nothing (exit $($r.ExitCode)): $($r.Output)" }
+            return $last | ConvertFrom-Json
+        }
+
+        $phrase = "p$([char]0x00E4)ssw$([char]0x00F6)rd-$([char]0x65E5)$([char]0x672C)"
+        $staging = New-TestStaging
+        [IO.File]::WriteAllText((Join-Path $staging "data\settings\windows\Caf$([char]0x00E9).txt"), 'accented file name', $Utf8)
+        $made = New-Backup -Source $staging -Destination (New-TestDestination) -Name 'Cross PC' -Password (New-TestPassword $phrase) -SevenZip $SevenZip
+        $restoreRoot = Join-Path $TestDrive 'linux-restore'
+        $unpacked = Invoke-LinuxModule @('unpack', $made.Path, '--restore-root', $restoreRoot) (New-TestPassword $phrase)
+
+        # Every file under a folder by its path relative to it, with its SHA-256.
+        function Get-TreeHashes([string]$Folder) {
+            $base = (Resolve-Path -LiteralPath $Folder).Path.TrimEnd('\') + '\'
+            Get-ChildItem -LiteralPath $Folder -Recurse -File | Where-Object Name -ne '.hopover-unpacked.json' | Sort-Object FullName |
+                ForEach-Object { '{0} {1}' -f $_.FullName.Substring($base.Length), (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+        }
+    }
+
+    It 'unpacks it with a non-ASCII password into a folder named after it' {
+        $unpacked.result | Should -Be 'ok'
+        $unpacked.folder | Should -Be (Join-Path $restoreRoot 'Cross PC')
+    }
+
+    It 'yields the same hopover.json' {
+        $here = Read-BackupManifest -Path $made.Path -Password (New-TestPassword $phrase) -SevenZip $SevenZip
+        [IO.File]::ReadAllText((Join-Path $unpacked.folder 'hopover.json')) | Should -BeExactly $here.Raw
+        $unpacked.manifest.computerName | Should -Be $env:COMPUTERNAME
+        $unpacked.manifest.formatVersion | Should -Be $BackupFormatVersion
+    }
+
+    It 'yields the same file list, every file whole' {
+        $files = @(Get-TreeHashes $unpacked.folder)
+        $files | Should -Be @(Get-TreeHashes $staging)
+        $files -match "Caf$([char]0x00E9)\.txt" | Should -Not -BeNullOrEmpty
+    }
+
+    It 'tests it, and refuses a wrong password' {
+        (Invoke-LinuxModule @('test', $made.Path) (New-TestPassword $phrase)).result | Should -Be 'ok'
+        (Invoke-LinuxModule @('test', $made.Path) (New-TestPassword 'not the password')).result | Should -Be 'wrong-password'
+    }
+
+    It 'finds it by name' {
+        $found = Invoke-LinuxModule @('find', (Split-Path -Parent $made.Path))
+        $found.name | Should -Be 'Cross PC'
+        $found.path | Should -Be $made.Path
+    }
+}
+
 Describe 'Get-HopoverVersion' {
     # The release zip is `git archive` of the tag, which fills lib\version.txt's $Format:...$
     # placeholder with the tag. A clone keeps the placeholder and asks git instead.

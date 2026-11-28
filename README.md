@@ -53,7 +53,7 @@ To keep the data somewhere else, pass `-DataDir <folder>` to any script, or set 
   ```
 
   From a PowerShell window, `.\<Script>.ps1` works too. **From bash** (Git Bash, or `!` in Claude Code), `./<Script>.ps1` fails with a syntax error because bash can't run PowerShell; use `powershell -ExecutionPolicy Bypass -File ./<Script>.ps1`. List options take comma-separated values, e.g. `-Steps winget,vscode`.
-- **Linux:** bash and an apt, dnf or pacman distro with Python 3.10 or newer (Ubuntu 22.04, Debian 12, Fedora 35 and later all ship it). `restore-linux.sh` installs `python3` and `curl` itself if they're missing, and stops if `python3` is older than 3.10.
+- **Linux:** bash and an apt, dnf or pacman distro with Python 3.10 or newer (Ubuntu 22.04, Debian 12, Fedora 35 and later all ship it). `restore-linux.sh` installs `python3` and `curl` itself if they're missing, and for a Backup 7-Zip (the distro's `7zip` package, or `p7zip` where there is none, as on Fedora 41 and 42), and stops if `python3` is older than 3.10.
 
 ## Quick start
 
@@ -94,15 +94,18 @@ Each run does only the steps that suit that kind of prompt and skips anything al
 
 ### On Linux
 
+With the drive that holds your Backup mounted:
+
 ```bash
 git clone https://github.com/jwh3times/hopover.git ~/hopover
-git clone <you>/hopover-private ~/hopover/data       # or use --data with the folder on your Windows partition
 cd ~/hopover
-linux/restore-linux.sh --dry-run      # see what it would do
-linux/restore-linux.sh                # do it; asks for sudo when needed
+linux/restore-linux.sh --backup "/media/$USER/USB/Laptop 2026-11-27.hopover.7z" --dry-run   # see what it would do
+linux/restore-linux.sh --backup "/media/$USER/USB/Laptop 2026-11-27.hopover.7z"             # do it; asks for sudo when needed
 ```
 
-Run it as your normal user, not with sudo. With the migration drive mounted, it finds the extras archive by itself (or pass `--extras <folder>`). It ends with a report of what was installed, what has no Linux version (with alternatives), and what's left to do by hand. See [Linux restore](#linux-restore) below.
+Run it as your normal user, not with sudo. It asks once per run for the password of an encrypted Backup. It ends with a report of what was installed, what has no Linux version (with alternatives), and what's left to do by hand. See [Linux restore](#linux-restore) below.
+
+Without a Backup, it restores from a data folder and the migration drive as before: clone your companion repo to `~/hopover/data` (or pass `--data <folder>` for a data folder elsewhere), and with the migration drive mounted it finds the extras archive by itself (or pass `--extras <folder>`).
 
 ### Choosing what to restore (either PC)
 
@@ -172,7 +175,7 @@ Makes a **Backup**: one file, `<name>.hopover.7z`, holding what the scripts belo
 - **Your data folder is only read.** The staging folder (under `%TEMP%`, or `-StagingDir`) is removed afterwards, and an existing Backup with the same name is never overwritten.
 - **Options:** `-Destination` (default: the `migrationRoot` option), `-Name` (default `<PC name> <yyyy-mm-dd>`), `-NoEncryption`, `-Steps catalog,settings,extras,drivers` (default: all), `-SplitMB` (write pieces of that size, `.001`, `.002`, ...), `-StagingDir`, `-DataDir`, `-EventLog <file>` (also append progress events to that file, one JSON object per line; Hopover's page runs it this way).
 
-To restore on a new Windows PC: `.\Restore.ps1 -Backup "E:\<name>.hopover.7z"` (see [Restore.ps1](#restoreps1-new-windows-pc)).
+To restore on a new Windows PC: `.\Restore.ps1 -Backup "E:\<name>.hopover.7z"` (see [Restore.ps1](#restoreps1-new-windows-pc)). On Linux: `linux/restore-linux.sh --backup <file>` (see [Linux restore](#linux-restore)).
 
 ### Catalog-InstalledApps.ps1 (old PC)
 
@@ -316,6 +319,8 @@ List the steps with `-List`:
 
 `linux/restore-linux.sh` (a small bash bootstrap) runs `linux/restore_linux.py` (Python 3.10+, standard library only).
 
+**From a Backup** (`--backup <file>`, a `.hopover.7z` or a split one's `.001`): each run asks once for the password of an encrypted Backup, or reads it from standard input when a program pipes it in (`... | linux/restore-linux.sh --backup <file>`). The password reaches 7-Zip only on its standard input, never a command line. A wrong password, or a Backup made by a newer Hopover, stops the restore before anything is unpacked. Then it unpacks the Backup to `~/.local/share/hopover/restore/<Backup name>` (under `$XDG_DATA_HOME` if set; only you can read it) and restores from there, with the plan and the Options the Backup carries. A rerun reuses that copy; `--dry-run` unpacks to a temporary folder and removes it at the end. The copy holds the Backup's files unencrypted, passwords and keys included: delete it once the restore is finished (the restore prints the command). `linux/backup.py` is the Backup module that does this (find, test and unpack), with the distro's 7-Zip (`7z`, `7zz` on Ubuntu 22.04 and Debian 12, or p7zip's `7za`); run `python3 linux/backup.py --help` to use it on its own.
+
 | Step | Does |
 | --- | --- |
 | `packages` | Translates every winget and Chocolatey app with [catalog/linux-packages.json](catalog/linux-packages.json): adds vendor repos, installs packages, vendor `.deb`/`.rpm` files, installer scripts, AppImages, tarballs and Flatpaks; installs Claude Code if its config was exported |
@@ -337,7 +342,7 @@ List the steps with `-List`:
 
 Package names are checked against the distro's repos before they're chosen, so a package your release doesn't have falls through to the next method. Vendor repos that don't publish for a brand-new release yet fall back to the newest one they do. Apps with no Linux version are listed with alternatives; launchers that run through something else are mapped to it (Battle.net and the EA app to Lutris, Epic and GOG to Heroic). Windows-only runtimes (Visual C++, .NET Desktop, DirectX, ...) are skipped.
 
-**Options:** `--dry-run`, `--refresh` (with `--dry-run`: refresh package metadata so names are checked; needs sudo), `--steps`, `--only <ids>`, `--data`, `--extras`, `--dev-root`, `--prefer`, `--no-flatpak`, `--aur auto|never`, `--no-overwrite`, `--ignore-plan`, `--report <file>`, `--list`. Every run writes a Markdown report (default `~/hopover-linux-<timestamp>.md`).
+**Options:** `--backup <file>` (instead of `--data` and `--extras`), `--dry-run`, `--refresh` (with `--dry-run`: refresh package metadata so names are checked; needs sudo), `--steps`, `--only <ids>`, `--data`, `--extras`, `--dev-root`, `--prefer`, `--no-flatpak`, `--aur auto|never`, `--no-overwrite`, `--ignore-plan`, `--report <file>`, `--list`. Every run writes a Markdown report (default `~/hopover-linux-<timestamp>.md`).
 
 **Config files written for Windows.** Copied settings that refer to Windows paths or programs (`.ps1` hooks, `C:\` paths) are saved beside the target as `*.windows.*` for you to merge, rather than copied over a working Linux config. Instruction files (`CLAUDE.md`, `AGENTS.md`) are copied, with a note to review them.
 
@@ -353,11 +358,11 @@ The Linux report lists apps that aren't in the catalog yet. To add one, give it 
 
 ```powershell
 powershell -File linux\tests\Test-LinuxCatalog.ps1                 # structure, vendor URLs, GitHub asset patterns
-powershell -File linux\tests\Test-LinuxRestore.ps1                 # dry run in Docker on six distros
+powershell -File linux\tests\Test-LinuxRestore.ps1                 # dry run in Docker on eight images of six distros
 powershell -File linux\tests\Test-LinuxRestore.ps1 -Install -Only <id>   # really install it in each container
 ```
 
-`Test-LinuxRestore.ps1` needs Docker Desktop. Its containers run as root, so AUR installs are skipped there (AUR helpers refuse root), and Flatpak and systemd steps only print what they'd do.
+`Test-LinuxRestore.ps1` needs Docker Desktop and the network. It restores a small fixture Backup it makes with the Backup module, so each container also shows the bootstrap installing a 7-Zip that opens it; `-Backup <file>` restores one of yours instead, and `-DataDir <folder>` a data folder. Its containers run as root, so AUR installs are skipped there (AUR helpers refuse root), and Flatpak and systemd steps only print what they'd do.
 
 ## What isn't covered
 
@@ -384,7 +389,7 @@ Hopover is free software under the [GNU Affero General Public License v3.0](LICE
 | `lib\version.txt` | A placeholder that `git archive` fills with the tag, so a release zip records its version in each Backup's `hopover.json` (a clone asks `git describe` instead) |
 | `ui\index.html` | The page `Hopover.ps1` and `Show-RestorePlan.ps1` serve |
 | `catalog\` | App-data locations and the Linux translation tables |
-| `linux\` | `restore-linux.sh`, `restore_linux.py`, and `tests\` |
+| `linux\` | `restore-linux.sh`, `restore_linux.py`, `backup.py` (the Backup module on Linux: find, test and unpack), and `tests\` |
 | `config.example.json` | Every option with its default; the starting point for `data\config.json` |
 | `CHECKLIST.md` | The step-by-step wipe and reinstall checklist |
 | `tests\` | Pester tests for the Windows scripts, `api-cases.json` (the page API's request and response cases, which every Hopover server must pass), and `Invoke-PowerShellChecks.ps1` (parse, lint, test) |
