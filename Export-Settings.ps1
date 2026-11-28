@@ -667,23 +667,14 @@ if ($cskills.Count) {
 # ---------------------------------------------------------------------------
 Write-Host "Checking repos under $DevRoot..." -ForegroundColor Cyan
 
-$SkipDirs = @('node_modules', '.git', 'bin', 'obj', '.venv', 'venv', 'target', 'dist', 'build', '.next', '.turbo', '.cache')
 # Gitignored files worth carrying over by hand (names only are reported).
 $LocalFilePattern = '(?i)(^|/)(\.env[^/]*|\.dev\.vars[^/]*|[^/]*\.local\.[^/]+|local\.settings\.json|appsettings\.Development\.json|secrets?\.[^/]+|credentials[^/]*|[^/]+\.(pem|key|pfx|p12|jks|keystore))$'
-
-function Find-Repos([string]$Dir, [int]$Depth) {
-    if (Test-Path -LiteralPath (Join-Path $Dir '.git')) { return $Dir }
-    if ($Depth -le 0) { return }
-    Get-ChildItem -LiteralPath $Dir -Directory -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notin $SkipDirs } |
-        ForEach-Object { Find-Repos $_.FullName ($Depth - 1) }
-}
 
 # Files under $Dir that are not inside any repo (and not build output).
 function Get-LooseFiles([string]$Dir) {
     Get-ChildItem -LiteralPath $Dir -Force -ErrorAction SilentlyContinue | ForEach-Object {
         if ($_.PSIsContainer) {
-            if ($_.Name -in $SkipDirs) { return }
+            if ($_.Name -in $RepoSkipDirs) { return }
             if (Test-Path -LiteralPath (Join-Path $_.FullName '.git')) { return }
             Get-LooseFiles $_.FullName
         } else { $_ }
@@ -715,47 +706,19 @@ if ((Test-Path -LiteralPath $DevRoot) -and (Test-Tool git)) {
         }
         foreach ($r in $repos) {
             $rel      = $r.Substring($devRootFull.Length + 1)
-            $remotes  = @(git -C $r remote 2>$null)
-            $url      = if ($remotes.Count) { (git -C $r remote get-url $remotes[0] 2>$null) } else { '' }
-            $branch   = git -C $r branch --show-current 2>$null
             # In the repo holding this script, ignore changes to the export itself.
-            $status   = @(git -C $r status --porcelain 2>$null)
-            if ($OutDir.StartsWith($r.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-                $outRel = $OutDir.Substring($r.TrimEnd('\').Length + 1).Replace('\', '/').TrimEnd('/') + '/'
-                $status = @($status | Where-Object { -not ($_.Substring(3).Trim('"')).StartsWith($outRel, [StringComparison]::OrdinalIgnoreCase) })
-            }
-            $dirty    = $status.Count
-            # A branch whose remote/pushRemote is a URL (e.g. a fork) has no
-            # remote-tracking ref, so --remotes can't see it. Ask the URL for
-            # the branch tip and count it as pushed if we have that commit.
-            $pushedTips = @()
-            foreach ($b in @(git -C $r for-each-ref --format='%(refname:short)' refs/heads 2>$null)) {
-                $bRemote = git -C $r config --get "branch.$b.pushremote" 2>$null
-                if (-not $bRemote) { $bRemote = git -C $r config --get "branch.$b.remote" 2>$null }
-                if ($bRemote -notmatch '://|^git@') { continue }
-                $refs = @("refs/heads/$b")
-                $bMerge = git -C $r config --get "branch.$b.merge" 2>$null
-                if ($bMerge -and $bMerge -ne $refs[0]) { $refs += $bMerge }
-                foreach ($line in @(git -C $r ls-remote $bRemote @refs 2>$null)) {
-                    $sha = ($line -split '\s+')[0]
-                    git -C $r cat-file -e "$sha^{commit}" 2>$null
-                    if ($LASTEXITCODE -eq 0) { $pushedTips += $sha }
-                }
-            }
-            # After --not, plain SHAs are excluded too.
-            $unpushed = @(git -C $r log --branches --not --remotes @pushedTips --oneline 2>$null).Count
-            $stash    = @(git -C $r stash list 2>$null).Count
+            $state    = Get-RepoState $r $OutDir
             $local    = @(git -C $r ls-files --others --ignored --exclude-standard --directory 2>$null | Where-Object { $_ -match $LocalFilePattern })
             $useOnly  = $UseOnlyRepos -contains $rel
             $reasons  = @()
             if (-not $useOnly) {
-                if (-not $remotes.Count) { $reasons += 'no remote' }
-                if ($unpushed)           { $reasons += "$unpushed unpushed commit(s)" }
-                if ($dirty)              { $reasons += "$dirty uncommitted change(s)" }
-                if ($stash)              { $reasons += "$stash stash(es)" }
+                if (-not $state.Remotes.Count) { $reasons += 'no remote' }
+                if ($state.Unpushed)           { $reasons += "$($state.Unpushed) unpushed commit(s)" }
+                if ($state.Uncommitted)        { $reasons += "$($state.Uncommitted) uncommitted change(s)" }
+                if ($state.Stashes)            { $reasons += "$($state.Stashes) stash(es)" }
             }
             $repoRows.Add([pscustomobject]@{
-                Path = $rel; Url = [string]$url; Branch = [string]$branch
+                Path = $rel; Url = $state.Url; Branch = $state.Branch
                 Reasons = $reasons; LocalFiles = $local; UseOnly = $useOnly
             })
         }

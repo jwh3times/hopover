@@ -9,7 +9,8 @@
   or what the page does (`ui/index.html`, the page API in `tests/api-cases.json`, the jobs in
   `lib/Jobs.ps1`) changes.
 - `CHECKLIST.md`: the step-by-step order for moving a PC, from capture to wipe to restore. Update
-  when a script is added or removed, or when `Test-WipeReady.ps1` checks something new.
+  when a script is added or removed, or when the Ready check (`lib/Ready.ps1`, read through
+  `lib/Probe.ps1`, with `Test-WipeReady.ps1` its command line) checks something new.
 - `CHANGELOG.md`: one dated section per version a merge mints, stamped by the release workflow's
   `scripts/stamp-changelog.mjs` after the merge (`docs/agents/releases.md`). `frozen`: no branch
   writes its sections.
