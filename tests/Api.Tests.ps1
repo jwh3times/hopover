@@ -398,6 +398,7 @@ Describe 'Hopover.ps1 jobs' {
         @($done.events | Where-Object { $_.type -eq 'percent' })[0].percent | Should -Be 50 -Because 'the drivers are one of the two shares, packing the other'
         $made = @($done.events | Where-Object { $_.type -eq 'job-finished' })[0].details.path
         Get-BackupListing $made | Should -Contain 'drivers\README.md'
+        Get-BackupListing $made | Should -Contain 'data\settings\windows\drivers.md' -Because "the restore plan's Drivers view reads the device list there"
         @((Get-BackupManifest $made).captured) | Should -Contain 'drivers'
     }
 

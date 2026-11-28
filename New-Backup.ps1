@@ -172,6 +172,16 @@ try {
         Send-Event -Type 'percent' -Percent ([int](100 * $done / $total))
     }
 
+    # Save-Drivers.ps1 copies its device list into the data folder only when settings\windows is
+    # there already, and the helper's drivers run before the settings step makes it. The restore
+    # plan's Drivers view reads that copy, so a Backup carries it however its drivers were saved.
+    $driverList = Join-Path $staging 'drivers\README.md'
+    $listCopy = Join-Path $stagingData 'settings\windows\drivers.md'
+    if ((Test-Path -LiteralPath $driverList -PathType Leaf) -and -not (Test-Path -LiteralPath $listCopy)) {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $listCopy) -Force | Out-Null
+        Copy-Item -LiteralPath $driverList -Destination $listCopy
+    }
+
     Write-Host ''
     Write-Host "== Backup: packing $Name$BackupSuffix" -ForegroundColor Cyan
     Send-Event -Type 'step-started' -Step 'pack'
