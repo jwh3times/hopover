@@ -30,7 +30,7 @@ For the full sequence (days before, wipe day, install, new PC) follow [CHECKLIST
    ```powershell
    mkdir data
    copy config.example.json data\config.json
-   notepad data\config.json      # at least: migrationRoot and keepDrives
+   notepad data\config.json      # at least: migrationRoot (and wipedDrives, if you'll wipe more than the Windows drive)
    ```
 
 3. Optional but recommended: make the data folder its own private repo, so your exports survive the wipe without depending on a drive. Run its git commands from inside `data\`; the outer repo never sees it.
@@ -68,10 +68,11 @@ The simplest way to make a Backup: double-click **`Hopover.cmd`**, click **Back 
 .\Save-Drivers.ps1                  # elevated prompt; drivers -> <migrationRoot>\drivers
 .\Show-RestorePlan.ps1              # optional: untick what you don't want -> data\restore-plan.json
 cd data; git add -A; git commit -m "Refresh exports"; git push; cd ..
-.\Test-WipeReady.ps1                # must print READY
+.\New-Backup.ps1 -Destination E:\   # one encrypted file of all the above
+.\Test-WipeReady.ps1 -Backup "E:\<name>.hopover.7z"   # must print READY
 ```
 
-Don't wipe until `Test-WipeReady.ps1` prints **READY** and you've worked through its "confirm yourself" list.
+Don't wipe until `Test-WipeReady.ps1` prints **READY** for your Backup and you've worked through its "confirm yourself" list.
 
 ### On a new Windows PC
 
@@ -128,16 +129,14 @@ Hopover's options live in `%LOCALAPPDATA%\Hopover\options.json` (on Linux, `~/.c
 
 | Key | Used by | Meaning |
 | --- | --- | --- |
-| `devRoot`, `repoDepth` | Export-Settings, Backup-Extras, Restore | Folder holding your git checkouts, and how deep to look for repos in it |
-| `useOnlyRepos` | Export-Settings, Backup-Extras | Repos you only use and never push; their local changes aren't reported or archived |
-| `migrationRoot` | New-Backup, Hopover, Backup-Extras, Save-Drivers, Restore, Test-WipeReady | Folder on a drive that won't be wiped; gets `extras\` and `drivers\`, and is where `New-Backup.ps1` saves a Backup unless told `-Destination` (and the folder the page suggests) |
-| `keepDrives` | Test-WipeReady | Drive letters that survive the reinstall |
-| `wipedDrives` | none yet | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
+| `devRoot`, `repoDepth` | Export-Settings, Backup-Extras, Restore, Test-WipeReady | Folder holding your git checkouts, and how deep to look for repos in it |
+| `useOnlyRepos` | Export-Settings, Backup-Extras, Test-WipeReady | Repos you only use and never push; their local changes aren't reported or archived |
+| `migrationRoot` | New-Backup, Hopover, Backup-Extras, Save-Drivers, Restore | Folder on a drive that won't be wiped; gets `extras\` and `drivers\`, and is where `New-Backup.ps1` saves a Backup unless told `-Destination` (and the folder the page suggests) |
+| `wipedDrives` | Test-WipeReady | Drive letters the reinstall will erase; the Windows drive always counts, listed or not |
 | `excludedTypeRoots`, `maxFileMB` | Backup-Extras | Folders to search for `.exe`/`.msi`/`.dll`/`.iso` and similar files that cloud backups usually skip; per-file size limit |
 | `portableRoots` | Catalog-InstalledApps | Where to look for portable apps |
 | `appData.include` / `exclude` / `custom` | Backup-Extras | Optional app-data items to add, items to drop, and your own folders (see [catalog/app-data.json](catalog/app-data.json)) |
-| `backup.provider`, `backup.maxRemainingMB` | Test-WipeReady | `auto` (Backblaze if installed), `backblaze` or `none`; how much may still be uploading |
-| `recoveryFiles` | Test-WipeReady | File name patterns (2FA recovery codes and the like) expected in the root of a keep drive |
+| `backup.provider`, `backup.maxRemainingMB` | Test-WipeReady | The cloud backup service that keeps your files while a Backup leaves them out: `auto` (Backblaze if installed), `backblaze` or `none`; how much may still be uploading |
 | `confirm` | Test-WipeReady | Extra lines for its "confirm yourself" list |
 | `linux.devRoot` | restore-linux.sh | Where repos are cloned on Linux (default `~/dev`) |
 | `linux.prefer` | restore-linux.sh | Order of install sources (default `vendor`, `distro`, `portable`, `flatpak`) |
@@ -225,15 +224,15 @@ Exports every third-party driver with `pnputil` to `<migrationRoot>\drivers`, in
 
 ### Test-WipeReady.ps1 (old PC)
 
-Go/no-go check before wiping:
+The Ready check: go or no-go before wiping, for one Backup. Give it where the Backup is saved, and every copy you made: `.\Test-WipeReady.ps1 -Backup "E:\<name>.hopover.7z","\\nas\backups\<name>.hopover.7z"`. It asks for the password again (Enter for an unprotected Backup; pipe it in from another program). It fails when:
 
-- the cloud backup (Backblaze, when installed or configured) has finished uploading and its status is current
-- the catalog, settings export, extras archive and driver export are fresh and complete
-- every repo is committed and pushed, and **the data folder is committed and pushed** (the tool folder only warns)
-- the keep drives are connected and hold files matching `recoveryFiles`
-- an installer USB is plugged in
+- **every copy is on a drive that will be wiped.** The Windows drive always is, and `wipedDrives` names the others. A copy on another drive, a network share or in a synced folder (OneDrive, Dropbox, Google Drive) survives; one in a synced folder adds "it finished uploading" to the list you confirm.
+- a copy that survives **doesn't open with the password** where it is saved (7-Zip tests every file in it), or the copies aren't of one Backup
+- the Backup was **made more than a day ago** (`-MaxAgeHours`), by the time in its `hopover.json`
+- the Backup leaves out **Your files** and no cloud backup service (`backup.provider`; Backblaze is the one it can read) has them: not found, not running, or more than `backup.maxRemainingMB` still to upload. Until a Backup can carry Your files, every Backup leaves them out.
+- a **repo** under `devRoot` has uncommitted changes, unpushed commits, stashes or no remote (`useOnlyRepos` are left out)
 
-It ends with a list of things only you can confirm, and exits 1 if anything fails. **Options:** `-MaxAgeHours` (default 24), `-MaxRemainingMB`, `-SkipDocker`, `-KeepDrives`, `-MigrationRoot`.
+It warns when no installer USB is plugged in, notes a removable drive holding the Backup to unplug before setup and any volume on dynamic disks, and ends with a list of things only you can confirm (the `confirm` Option adds lines). It exits 1 if anything fails. An installer USB counts when it holds Windows setup or a Linux live system (Ubuntu, Debian, Fedora, Arch and their kin). A repo git can't read fails too, since it may hold unpushed work. **Options:** `-Backup` (required), `-MaxAgeHours` (default 24), `-MaxRemainingMB`, `-DataDir`.
 
 ### Show-RestorePlan.ps1 (both)
 

@@ -1,6 +1,6 @@
 # Reinstall checklist
 
-The order to do things in when you're about to wipe a Windows PC and set it up again, as Windows or as Linux (or both, dual-booting). It assumes every drive you format is gone for good except the ones listed in `keepDrives`, and that a cloud backup holds a second copy of your files. Keep anything specific to your own PC in `NOTES.md` in your data folder.
+The order to do things in when you're about to wipe a Windows PC and set it up again, as Windows or as Linux (or both, dual-booting). It assumes every drive you format is gone for good (the Windows drive, and any you list in `wipedDrives`), and that a cloud backup holds a second copy of your files. Keep anything specific to your own PC in `NOTES.md` in your data folder.
 
 ## Scripts
 
@@ -14,18 +14,18 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
 | `Backup-Extras.ps1` | old PC | Archives app data, files cloud backups skip, dev extras and Docker volumes to `<migrationRoot>\extras`. |
 | `Save-Drivers.ps1` | old PC, elevated | Exports every third-party driver to `<migrationRoot>\drivers`, including network drivers. |
 | `Show-RestorePlan.ps1` | both | A page in your browser to look through the exports and untick anything you don't want restored. Saves `restore-plan.json`. |
-| `Test-WipeReady.ps1` | old PC | Go/no-go check. Exits 0 only when the backup has caught up, every export is fresh and clean, and all repos and the data folder are pushed. |
+| `Test-WipeReady.ps1` | old PC | The Ready check for a Backup: exits 0 only when a copy survives the wipe and opens with its password, it was made in the last day, your files are backed up somewhere, and every repo is pushed. |
 | `Restore.ps1` | new Windows | Does the scriptable setup. Run it once elevated and once normally; every step is safe to rerun. |
 | `linux/restore-linux.sh` | Linux | Installs Linux equivalents of your apps and restores dev config, repos and extras. |
 
 ## Days before
 
-- [ ] **Set up the data folder and config.** `config.json` needs at least `migrationRoot` (on a drive you'll keep) and `keepDrives`. See the README.
+- [ ] **Set up the data folder and config.** `config.json` needs at least `migrationRoot` (on a drive you'll keep), and `wipedDrives` if you'll wipe drives besides the Windows one. See the README.
 - [ ] **Let your cloud backup finish.** Exclude folders that simply redownload (game libraries) so it finishes sooner.
 - [ ] **Check the backup's version history** is long enough that files deleted by the wipe aren't purged before you've restored them (Backblaze defaults to 30 days; 1 year is safer).
-- [ ] **Make an installer USB** (Windows Media Creation Tool, or your Linux distro's ISO), on a stick that isn't a keep drive.
+- [ ] **Make an installer USB** (Windows Media Creation Tool, or your Linux distro's ISO), on a stick that doesn't hold the Backup.
 - [ ] **Check you can reach your password manager** from another device, and keep its recovery kit somewhere other than this PC. Everything else depends on it.
-- [ ] **Copy 2FA recovery codes** to a keep drive (`Test-WipeReady.ps1` looks for `recoveryFiles`).
+- [ ] **Copy 2FA recovery codes** somewhere other than this PC (`Test-WipeReady.ps1` has you confirm it).
 - [ ] **Decide about RAID or dynamic volumes.** `Test-WipeReady.ps1` lists them; to keep one, leave its disks alone in setup and import it afterwards.
 - [ ] **Clear `settings\dev\repos.md`:** push or discard anything listed under "Repos needing attention".
 - [ ] **Optional:** `Backup-Extras.ps1 -Include app-thunderbird-*` (or other optional items) for a fast local restore of big profiles.
@@ -40,8 +40,9 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
 6. Optional: `Show-RestorePlan.ps1` to untick apps, repos, settings or anything else you don't want back. Save the plan.
 7. Commit and push the data folder (and the tool, if you changed it).
 8. Wait for the cloud backup to upload the new archives on the migration drive.
-9. `Test-WipeReady.ps1` must print **READY**. Then tick off its "confirm yourself" list.
-10. Shut down. **Unplug the keep drives.**
+9. Make a Backup (`New-Backup.ps1 -Destination <a drive you keep>`, or **Back up** in `Hopover.cmd`), and copy it anywhere else you want a copy.
+10. `Test-WipeReady.ps1 -Backup <file>[,<copy>]` must print **READY**. Then tick off its "confirm yourself" list.
+11. Shut down. **Unplug the drives you're keeping.**
 
 ## Installing
 
@@ -87,7 +88,7 @@ The order to do things in when you're about to wipe a Windows PC and set it up a
 
 ## Cloud backup on the new install
 
-- [ ] **Restore first.** Restore what you need before reinstalling the backup client, by download or by ordering a restore drive for multi-TB amounts. Anything already on a keep drive can come from there instead.
+- [ ] **Restore first.** Restore what you need before reinstalling the backup client, by download or by ordering a restore drive for multi-TB amounts. Anything already on a drive you didn't wipe can come from there instead.
 - [ ] **Inherit, don't start over.** Most clients (Backblaze: **Inherit Backup State**) can take over the old backup instead of re-uploading everything.
 - [ ] **Re-add your exclusions.**
 - [ ] **Keep external drives connected regularly.** Backups of drives left disconnected past the retention period can be dropped.

@@ -66,7 +66,6 @@ function Get-ConfigDefaults {
         repoDepth         = 3
         useOnlyRepos      = @()
         migrationRoot     = ''
-        keepDrives        = @()
         wipedDrives       = @()
         excludedTypeRoots = @('%USERPROFILE%\Downloads')
         maxFileMB         = 1024
@@ -74,7 +73,6 @@ function Get-ConfigDefaults {
                               '%USERPROFILE%\Portable', '%USERPROFILE%\Apps', '%USERPROFILE%\Tools')
         appData           = [ordered]@{ include = @(); exclude = @(); custom = @() }
         backup            = [ordered]@{ provider = 'auto'; maxRemainingMB = 1024 }
-        recoveryFiles     = @('*recovery*', '*backup*code*', '*2fa*')
         confirm           = @()
         linux             = [ordered]@{ devRoot = '~/dev'; prefer = @('vendor', 'distro', 'portable', 'flatpak'); aur = 'auto'; flatpak = $true; nodeMajor = 24 }
     }
@@ -123,9 +121,10 @@ function Get-Options([string]$DataDir) {
 }
 
 # Drive letters that will be erased by the reinstall: the Windows drive always, plus the
-# wipedDrives Option. Letters come back upper-case and without a colon, each once.
-function Get-WipedDrives($Options) {
-    $letters = @($env:SystemDrive) + @($Options['wipedDrives']) |
+# wipedDrives Option. Letters come back upper-case and without a colon, each once. $SystemDrive
+# names the Windows drive (the Ready check passes the system probe's).
+function Get-WipedDrives($Options, [string[]]$SystemDrive = @($env:SystemDrive)) {
+    $letters = @($SystemDrive) + @($Options['wipedDrives']) |
         Where-Object { $_ } | ForEach-Object { ([string]$_).Trim().TrimEnd('\', '/', ':').ToUpper() } | Where-Object { $_ -match '^[A-Z]$' }
     $seen = @{}
     return @($letters | Where-Object { -not $seen.ContainsKey($_) -and ($seen[$_] = $true) })
@@ -145,12 +144,56 @@ function Read-JsonFile([string]$Path) {
 # PS 5.1 returns a top-level JSON array as one object; this always yields the elements.
 function Read-JsonList([string]$Path) { $p = Read-JsonFile $Path; if ($null -eq $p) { return @() }; return @($p | ForEach-Object { $_ }) }
 
-# Git state of a folder: $null if it isn't a repo, else dirty/unpushed counts and whether it has a remote.
-function Get-GitState([string]$Dir) {
-    if (-not (Test-Path -LiteralPath (Join-Path $Dir '.git'))) { return $null }
-    $dirty    = @(git -C $Dir status --porcelain 2>$null).Count
-    $hasUp    = [bool](git -C $Dir rev-parse --abbrev-ref '@{u}' 2>$null)
-    $unpushed = if ($hasUp) { @(git -C $Dir log '@{u}..' --oneline 2>$null).Count } else { @(git -C $Dir log --branches --not --remotes --oneline 2>$null).Count }
-    $remote   = [bool](@(git -C $Dir remote 2>$null).Count)
-    [pscustomobject]@{ Dirty = $dirty; Unpushed = $unpushed; HasUpstream = $hasUp; HasRemote = $remote }
+# Folders never searched for repos: build output and package caches.
+$RepoSkipDirs = @('node_modules', '.git', 'bin', 'obj', '.venv', 'venv', 'target', 'dist', 'build', '.next', '.turbo', '.cache')
+
+# The repos at or below $Dir, at most $Depth folders down; a repo's own subfolders aren't searched.
+function Find-Repos([string]$Dir, [int]$Depth) {
+    if (Test-Path -LiteralPath (Join-Path $Dir '.git')) { return $Dir }
+    if ($Depth -le 0) { return }
+    Get-ChildItem -LiteralPath $Dir -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin $RepoSkipDirs } |
+        ForEach-Object { Find-Repos $_.FullName ($Depth - 1) }
+}
+
+# What a repo holds that its remotes don't: uncommitted changes, unpushed commits and stashes.
+# Changes under $IgnorePath (a folder inside the repo) aren't counted. Readable is false when git
+# couldn't read it (a repo it doesn't trust, say), and the counts are then 0.
+function Get-RepoState([string]$Repo, [string]$IgnorePath) {
+    # Windows PowerShell 5.1 makes a native command's stderr an error under ErrorAction Stop.
+    $ErrorActionPreference = 'Continue'
+    $remotes = @(git -C $Repo remote 2>$null)
+    $url     = if ($remotes.Count) { [string](git -C $Repo remote get-url $remotes[0] 2>$null) } else { '' }
+    $branch  = [string](git -C $Repo branch --show-current 2>$null)
+    $status  = @(git -C $Repo status --porcelain 2>$null)
+    $readable = $LASTEXITCODE -eq 0
+    if ($IgnorePath -and $IgnorePath.StartsWith($Repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        $ignoreRel = $IgnorePath.Substring($Repo.TrimEnd('\').Length + 1).Replace('\', '/').TrimEnd('/') + '/'
+        $status = @($status | Where-Object { -not ($_.Substring(3).Trim('"')).StartsWith($ignoreRel, [StringComparison]::OrdinalIgnoreCase) })
+    }
+    # A branch whose remote/pushRemote is a URL (e.g. a fork) has no remote-tracking ref, so
+    # --remotes can't see it. Ask the URL for the branch tip and count it as pushed if we have that
+    # commit.
+    $pushedTips = @()
+    foreach ($b in @(git -C $Repo for-each-ref --format='%(refname:short)' refs/heads 2>$null)) {
+        $bRemote = git -C $Repo config --get "branch.$b.pushremote" 2>$null
+        if (-not $bRemote) { $bRemote = git -C $Repo config --get "branch.$b.remote" 2>$null }
+        if ($bRemote -notmatch '://|^git@') { continue }
+        $refs = @("refs/heads/$b")
+        $bMerge = git -C $Repo config --get "branch.$b.merge" 2>$null
+        if ($bMerge -and $bMerge -ne $refs[0]) { $refs += $bMerge }
+        foreach ($line in @(git -C $Repo ls-remote $bRemote @refs 2>$null)) {
+            $sha = ($line -split '\s+')[0]
+            git -C $Repo cat-file -e "$sha^{commit}" 2>$null
+            if ($LASTEXITCODE -eq 0) { $pushedTips += $sha }
+        }
+    }
+    # After --not, plain SHAs are excluded too.
+    $unpushed = @(git -C $Repo log --branches --not --remotes @pushedTips --oneline 2>$null).Count
+    $stashes  = @(git -C $Repo stash list 2>$null).Count
+    if (-not $readable) { $status = @(); $unpushed = 0; $stashes = 0 }
+    [pscustomobject]@{
+        Readable = $readable; Remotes = $remotes; Url = $url; Branch = $branch
+        Uncommitted = $status.Count; Unpushed = $unpushed; Stashes = $stashes
+    }
 }
