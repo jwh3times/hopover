@@ -2,9 +2,14 @@
     New-Backup.ps1
     Makes a Backup of this PC: one file, <name>.hopover.7z, that holds everything a restore needs
     (docs/adr/0002-one-encrypted-backup-file.md). It runs the capture scripts (app catalog,
-    settings export, extras, and drivers from an elevated prompt) into a staging folder, writes
-    hopover.json, and packs the lot, AES-256 encrypted with its file names hidden, using the
-    pinned 7-Zip (lib\7zip.json, downloaded and hash-checked on first use).
+    settings export, extras and drivers) into a staging folder, writes hopover.json, and packs the
+    lot, AES-256 encrypted with its file names hidden, using the pinned 7-Zip (lib\7zip.json,
+    downloaded and hash-checked on first use).
+
+    Saving the drivers needs administrator rights. Windows asks for them once, as the Back up
+    starts, and the drivers are saved in a window of their own (Invoke-AdminSteps.ps1); everything
+    else runs as you. Say No, and the Backup is made without the drivers. From PowerShell opened
+    as administrator nothing is asked.
 
         powershell -ExecutionPolicy Bypass -File .\New-Backup.ps1 -Destination E:\
         powershell -ExecutionPolicy Bypass -File .\New-Backup.ps1 -Destination E:\ -Name "Laptop before reinstall"
@@ -23,6 +28,8 @@
         -StagingDir     where to build it first (default: %TEMP%); a folder is made inside and removed after
         -EventLog       also append progress events to this file, one JSON object per line (lib\Jobs.ps1);
                         Hopover's page runs it this way
+        -AdminHelper    for tests: a script run in place of the administrator helper, without asking
+                        for administrator rights (same parameters as Invoke-AdminSteps.ps1)
 
     Defaults come from the Options; parameters override them. Your data folder is only read.
 #>
@@ -37,7 +44,8 @@ param(
     [string]$StagingDir,
     # Data folder (default: $env:HOPOVER_DATA, else .\data).
     [string]$DataDir,
-    [string]$EventLog
+    [string]$EventLog,
+    [string]$AdminHelper
 )
 
 $ErrorActionPreference = 'Stop'
@@ -115,15 +123,39 @@ try {
     # Each capture step, and packing, is an equal share of the progress.
     $total = @($known | Where-Object { $Steps -contains $_ }).Count + 1
     $done = 0
-    foreach ($step in $known) {
-        if ($Steps -notcontains $step) { continue }
-        if ($step -eq 'drivers' -and -not (Test-IsAdmin)) {
-            $problems.Add('Drivers were left out: exporting them needs an elevated PowerShell (Run as administrator).')
-            Send-Event -Type 'message' -Step $step -Code 'drivers-need-admin'
-            $done++
-            Send-Event -Type 'percent' -Percent ([int](100 * $done / $total))
-            continue
+
+    # The steps that need administrator rights go first, in one helper: Windows asks for the
+    # rights as the Back up starts, while you're there, and only once. In a PowerShell that has
+    # them already, they run here with the rest.
+    $needAdmin = @($JobAdminSteps['backup'] | Where-Object { $Steps -contains $_ })
+    $viaHelper = $needAdmin.Count -and ($AdminHelper -or -not (Test-IsAdmin))
+    if ($viaHelper) {
+        Write-Host ''
+        Write-Host "== Backup: $($needAdmin -join ', '), in a window with administrator rights (Windows asks for them)" -ForegroundColor Cyan
+        $helper = Invoke-AdminHelper -Steps $needAdmin -DataDir $stagingData -StagingDir $staging -EventLog $EventLog -AdminHelper $AdminHelper
+        if ($helper.Ran) {
+            # A step counts once it left its folder, as one that ran here does whatever its exit.
+            $captured += $helper.Done
+            $missed = @($needAdmin | Where-Object { $helper.Done -notcontains $_ })
+            if ($missed.Count) {
+                $problems.Add("The administrator helper stopped before it saved: $($missed -join ', '), so this Backup leaves them out. The details are in $($helper.Log).")
+                Send-Event -Type 'message' -Code 'admin-failed' -Details @{ steps = $missed; log = $helper.Log }
+            } elseif ($helper.ExitCode) {
+                $problems.Add("The $($needAdmin -join ', ') step reported a problem (exit $($helper.ExitCode)); the details are in $($helper.Log).")
+            }
+        } else {
+            $why = if ($helper.Reason) { "Hopover couldn't get administrator rights ($($helper.Reason))" } else { 'Administrator rights weren''t given' }
+            $problems.Add("$why, so this Backup leaves out: $($needAdmin -join ', ').")
+            $details = @{ steps = $needAdmin }
+            if ($helper.Reason) { $details.reason = $helper.Reason }
+            Send-Event -Type 'message' -Code 'admin-skipped' -Details $details
         }
+        $done += $needAdmin.Count
+        Send-Event -Type 'percent' -Percent ([int](100 * $done / $total))
+    }
+
+    foreach ($step in $known) {
+        if ($Steps -notcontains $step -or ($viaHelper -and $needAdmin -contains $step)) { continue }
         Write-Host ''
         Write-Host "== Backup: $step" -ForegroundColor Cyan
         Send-Event -Type 'step-started' -Step $step
@@ -143,6 +175,8 @@ try {
     Write-Host ''
     Write-Host "== Backup: packing $Name$BackupSuffix" -ForegroundColor Cyan
     Send-Event -Type 'step-started' -Step 'pack'
+    # In the steps' own order, whichever ran first.
+    $captured = @($known | Where-Object { $captured -contains $_ })
     $made = New-Backup -Source $staging -Destination $Destination -Name $Name -Password $password -NoEncryption:$NoEncryption `
         -SplitBytes ([long]$SplitMB * 1MB) -Captured $captured -SevenZip $sevenZip
     Send-Event -Type 'step-finished' -Step 'pack' -Ok $true

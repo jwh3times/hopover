@@ -18,6 +18,7 @@ BeforeAll {
     $SevenZip = Get-SevenZip -CacheDir (Join-Path $TestDrive 'bin')
     $Hopover = Join-Path $root 'Hopover.ps1'
     $Stub = Join-Path $PSScriptRoot 'fixtures\Stub-Backup.ps1'
+    $StubHelper = Join-Path $PSScriptRoot 'fixtures\Stub-AdminSteps.ps1'
     $Shell = (Get-Process -Id $PID).Path
     Add-Type -AssemblyName System.Net.Http
     $Http = New-Object System.Net.Http.HttpClient
@@ -32,21 +33,24 @@ BeforeAll {
         [pscustomobject]@{ Dir = $d; AppData = (Join-Path $d 'appdata'); Temp = (Join-Path $d 'temp'); Data = (Join-Path $d 'data'); Out = (Join-Path $d 'out') }
     }
 
-    # Runs $Block with that user's per-user folders as the environment, then puts it back.
-    function Invoke-AsUser($Where, [scriptblock]$Block, [string]$Mode) {
-        $names = 'LOCALAPPDATA', 'TEMP', 'TMP', 'HOPOVER_DATA', 'HOPOVER_STUB'
+    # Runs $Block with that user's per-user folders as the environment, then puts it back. $Mode
+    # and $HelperMode tell the stand-in Back up and the stand-in helper what to do.
+    function Invoke-AsUser($Where, [scriptblock]$Block, [string]$Mode, [string]$HelperMode) {
+        $names = 'LOCALAPPDATA', 'TEMP', 'TMP', 'HOPOVER_DATA', 'HOPOVER_STUB', 'HOPOVER_STUB_HELPER', 'HOPOVER_OPTIONS'
         $saved = @{}; foreach ($k in $names) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
         $env:LOCALAPPDATA = $Where.AppData; $env:TEMP = $Where.Temp; $env:TMP = $Where.Temp; $env:HOPOVER_DATA = $Where.Data; $env:HOPOVER_STUB = $Mode
+        $env:HOPOVER_STUB_HELPER = $HelperMode; $env:HOPOVER_OPTIONS = $null
         try { & $Block }
         finally { foreach ($k in $names) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
     }
 
-    # Hopover.ps1 for that user, with the stand-in Back up unless $Real. Returns once it is serving.
-    function Start-Server($Where, [string]$Mode = 'finishes', [switch]$Real) {
+    # Hopover.ps1 for that user, with the stand-in Back up unless $Real, and always the stand-in
+    # elevated helper. Returns once it is serving.
+    function Start-Server($Where, [string]$Mode = 'finishes', [switch]$Real, [string]$HelperMode) {
         $port = Get-Random -Minimum 20000 -Maximum 45000
-        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', """$Hopover""", '-NoBrowser', '-Port', $port)
+        $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', """$Hopover""", '-NoBrowser', '-Port', $port, '-AdminHelper', """$StubHelper""")
         if (-not $Real) { $arguments += @('-BackupScript', """$Stub""") }
-        $p = Invoke-AsUser $Where { Start-Process -FilePath $Shell -ArgumentList $arguments -WindowStyle Hidden -PassThru } $Mode
+        $p = Invoke-AsUser $Where { Start-Process -FilePath $Shell -ArgumentList $arguments -WindowStyle Hidden -PassThru } $Mode $HelperMode
         $file = Join-Path $Where.AppData 'Hopover\server.json'
         $deadline = (Get-Date).AddSeconds(60)
         while ((Get-Date) -lt $deadline) {
@@ -88,7 +92,8 @@ BeforeAll {
             return $true
         }
         if ($Expected -is [array]) {
-            $items = if ($null -eq $Actual) { @() } else { @($Actual) }
+            # @() around the whole if: assigning an if's output unrolls a one-item array to the item.
+            $items = @(if ($null -eq $Actual) { } else { $Actual })
             if ($Expected.Count -eq 0) { return $items.Count -eq 0 }
             $i = 0
             foreach ($e in $Expected) {
@@ -118,8 +123,11 @@ BeforeAll {
 
     function Invoke-Case($Case) {
         $where = New-Profile
+        if ($Case.options) {
+            [IO.File]::WriteAllText((Join-Path $where.AppData 'Hopover\options.json'), (ConvertTo-Json -InputObject $Case.options -Depth 10), $Utf8)
+        }
         $stubMode = if ($Case.backup) { $Case.backup } else { 'finishes' }
-        $server = Start-Server $where $stubMode
+        $server = Start-Server $where $stubMode -Real:($stubMode -eq 'real') -HelperMode ([string]$Case.helper)
         try {
             $vars = @{ destination = $where.Out; missing = (Join-Path $where.Dir 'nowhere') }
             $n = 0
@@ -157,6 +165,18 @@ BeforeAll {
         $res.Json.job.id
     }
 
+    # The paths a Backup holds, sorted, and its hopover.json without the time it was made.
+    $BackupPassword = (New-Object System.Net.NetworkCredential('', 'correct horse battery')).SecurePassword
+    function Get-BackupListing([string]$File) {
+        @((Invoke-SevenZip -SevenZip $SevenZip -Arguments @('l', '-ba', '-slt', '-sccUTF-8', $File) -Password $BackupPassword).Stdout -split "`r?`n" |
+            Where-Object { $_ -like 'Path = *' } | ForEach-Object { $_.Substring(7) } | Sort-Object)
+    }
+    function Get-BackupManifest([string]$File) {
+        $m = (Read-BackupManifest -Path $File -Password $BackupPassword -SevenZip $SevenZip).Manifest
+        $m.PSObject.Properties.Remove('created')
+        $m
+    }
+
     function Wait-HopoverJob($Server, [string]$Id, [scriptblock]$Until) {
         $deadline = (Get-Date).AddSeconds(60)
         do {
@@ -177,7 +197,7 @@ Describe 'The page API (api-cases.json)' {
 Describe 'The page''s string table' {
     It 'words every message code the scripts and the server send' {
         $page = Get-Content -LiteralPath (Join-Path $root 'ui\index.html') -Raw
-        $codes = foreach ($f in 'Hopover.ps1', 'New-Backup.ps1', 'lib\Jobs.ps1', 'lib\Server.ps1') {
+        $codes = foreach ($f in 'Hopover.ps1', 'New-Backup.ps1', 'Invoke-AdminSteps.ps1', 'lib\Jobs.ps1', 'lib\Server.ps1') {
             $text = Get-Content -LiteralPath (Join-Path $root $f) -Raw
             [regex]::Matches($text, "-Code '([a-z-]+)'|Send-Error \`$\w+ \d+ '([a-z-]+)'|Close-EndedJob \`$\w+ '([a-z-]+)'") |
                 ForEach-Object { @($_.Groups[1].Value, $_.Groups[2].Value, $_.Groups[3].Value) | Where-Object { $_ } }
@@ -350,6 +370,7 @@ Describe 'Hopover.ps1 jobs' {
         $types | Should -Contain 'step-finished:pack'
         $types | Should -Contain 'item:backup-file'
         $types | Should -Contain 'message:only-some-steps'
+        $types | Should -Not -Contain 'message:helper-given' -Because 'no step needed administrator rights, so nothing asked for them'
         @($done.events | Where-Object { $_.type -eq 'percent' })[-1].percent | Should -Be 100
         # Once the job's process has exited, Hopover removes its staging folder too.
         $staging = Join-Path $where.AppData "Hopover\jobs\$id\staging"
@@ -361,20 +382,36 @@ Describe 'Hopover.ps1 jobs' {
         $out = Invoke-AsUser $where { 'correct horse battery' | & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'New-Backup.ps1') -Destination $where.Out -Name 'From the command line' -Steps ',' 2>&1 | Out-String }
         $LASTEXITCODE | Should -Be 0 -Because $out
 
-        $pw = (New-Object System.Net.NetworkCredential('', 'correct horse battery')).SecurePassword
-        $list = {
-            param($file)
-            (Invoke-SevenZip -SevenZip $SevenZip -Arguments @('l', '-ba', '-slt', '-sccUTF-8', $file) -Password $pw).Stdout -split "`r?`n" |
-                Where-Object { $_ -like 'Path = *' } | ForEach-Object { $_.Substring(7) } | Sort-Object
-        }
-        $page = @(& $list $made)
+        $page = Get-BackupListing $made
         $page.Count | Should -BeGreaterThan 0
-        $page | Should -Be @(& $list (Join-Path $where.Out 'From the command line.hopover.7z'))
-        $manifests = foreach ($f in $made, (Join-Path $where.Out 'From the command line.hopover.7z')) {
-            $m = (Read-BackupManifest -Path $f -Password $pw -SevenZip $SevenZip).Manifest
-            $m.PSObject.Properties.Remove('created')
-            ConvertTo-Json -InputObject $m -Depth 6 -Compress
-        }
+        $page | Should -Be (Get-BackupListing (Join-Path $where.Out 'From the command line.hopover.7z'))
+        $manifests = foreach ($f in $made, (Join-Path $where.Out 'From the command line.hopover.7z')) { ConvertTo-Json -InputObject (Get-BackupManifest $f) -Depth 6 -Compress }
         $manifests[0] | Should -BeExactly $manifests[1]
+    }
+
+    It 'puts the drivers the administrator helper saved in a Back up made from the page' {
+        $server = Start-Server (New-Profile) -Real
+        $id = Start-Backup $server 'With drivers' 'correct horse battery' @{ steps = @('drivers') }
+        $done = Wait-HopoverJob $server $id { param($r) $r.job.status -ne 'running' }
+        $done.job.status | Should -Be 'finished' -Because (ConvertTo-Json -InputObject $done.events -Depth 6)
+        @($done.events | Where-Object { $_.code -eq 'helper-given' }).Count | Should -Be 1 -Because 'one helper runs every administrator step'
+        @($done.events | Where-Object { $_.type -eq 'percent' })[0].percent | Should -Be 50 -Because 'the drivers are one of the two shares, packing the other'
+        $made = @($done.events | Where-Object { $_.type -eq 'job-finished' })[0].details.path
+        Get-BackupListing $made | Should -Contain 'drivers\README.md'
+        @((Get-BackupManifest $made).captured) | Should -Contain 'drivers'
+    }
+
+    It 'leaves the drivers out of the Backup when the administrator helper <Why>' -ForEach @(
+        @{ Why = 'is declined'; Mode = 'declines' }
+        @{ Why = 'fails before saving them'; Mode = 'fails' }
+    ) {
+        $server = Start-Server (New-Profile) -Real -HelperMode $Mode
+        $id = Start-Backup $server 'Without drivers' 'correct horse battery' @{ steps = @('drivers') }
+        $done = Wait-HopoverJob $server $id { param($r) $r.job.status -ne 'running' }
+        $done.job.status | Should -Be 'finished' -Because (ConvertTo-Json -InputObject $done.events -Depth 6)
+        @($done.events | Where-Object { $_.type -eq 'step-started' -and $_.step -eq 'drivers' }).Count | Should -Be 0
+        $made = @($done.events | Where-Object { $_.type -eq 'job-finished' })[0].details.path
+        @(Get-BackupListing $made | Where-Object { $_ -like 'drivers*' }).Count | Should -Be 0
+        @((Get-BackupManifest $made).captured) | Should -Not -Contain 'drivers'
     }
 }

@@ -78,8 +78,12 @@ function Get-ConfigDefaults {
     }
 }
 
-# Where Hopover keeps its Options on this PC: %LOCALAPPDATA%\Hopover\options.json.
+# Where Hopover keeps its Options on this PC: %LOCALAPPDATA%\Hopover\options.json, or the file
+# HOPOVER_OPTIONS names. The elevated helper (Invoke-AdminSteps.ps1) sets that to the user's file:
+# it runs as whoever approved the administrator prompt, whose own LOCALAPPDATA may be another
+# account's. restore_linux.py's options_path follows the same rule.
 function Get-OptionsPath {
+    if ($env:HOPOVER_OPTIONS) { return $env:HOPOVER_OPTIONS }
     $base = $env:LOCALAPPDATA
     if (-not $base) { $base = Join-Path $env:USERPROFILE 'AppData\Local' }
     return Join-Path $base 'Hopover\options.json'

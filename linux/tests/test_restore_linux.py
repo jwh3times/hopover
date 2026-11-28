@@ -106,6 +106,15 @@ class LoadOptionsTests(unittest.TestCase):
         self.assertNotIn("_comment", opt)
         self.assertNotIn("$schema", opt)
 
+    def test_reads_the_options_file_hopover_options_names(self):
+        # As the elevated helper does: it runs as whoever approved the prompt, not the user.
+        self.write(self.options_file, {"devRoot": "/admin"})
+        users = Path(self.tmp.name) / "users-options.json"
+        self.write(users, {"devRoot": "/work"})
+        with mock.patch.dict(os.environ, {"HOPOVER_OPTIONS": str(users)}):
+            self.assertEqual(restore_linux.options_path(), users)
+            self.assertEqual(restore_linux.load_options(self.data)["devRoot"], "/work")
+
     def test_defaults_to_dot_config_without_xdg_config_home(self):
         home = Path(self.tmp.name) / "home"
         (home / ".config" / "hopover").mkdir(parents=True)

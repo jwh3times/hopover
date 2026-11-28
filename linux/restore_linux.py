@@ -146,7 +146,11 @@ def expand(path):
 
 
 def options_path():
-    """Where Hopover keeps its Options on Linux: $XDG_CONFIG_HOME/hopover/options.json (~/.config)."""
+    """Where Hopover keeps its Options on Linux: $XDG_CONFIG_HOME/hopover/options.json (~/.config),
+    or the file HOPOVER_OPTIONS names, as an elevated helper is given the user's. lib/Common.ps1's
+    Get-OptionsPath follows the same rule."""
+    if os.environ.get("HOPOVER_OPTIONS"):
+        return Path(os.environ["HOPOVER_OPTIONS"])
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "hopover" / "options.json"
 
